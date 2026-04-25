@@ -1,8 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import { motion, AnimatePresence } from 'motion/react';

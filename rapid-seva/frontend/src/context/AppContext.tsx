@@ -10,6 +10,7 @@ interface AppContextType {
   setRole: (role: Role | null) => void;
   createCase: (caseData: Omit<Case, 'id' | 'timestamp' | 'status'>) => void;
   acceptCase: (caseId: string, ambulanceId: string) => void;
+  updateCaseStatus: (caseId: string, status: Case['status']) => void;
   registerHospital: (hospital: Omit<Hospital, 'id'>) => void;
   registerDoctor: (doctor: Omit<Doctor, 'id'>) => void;
   registerVolunteer: (volunteer: Omit<Volunteer, 'id'>) => void;
@@ -59,6 +60,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ));
   }, []);
 
+  const updateCaseStatus = useCallback((caseId: string, status: Case['status']) => {
+    setCases(prev => prev.map(c => c.id === caseId ? { ...c, status } : c));
+  }, []);
+
   const registerHospital = (hospital: Omit<Hospital, 'id'>) => {
     setHospitals(prev => [...prev, { ...hospital, id: Math.random().toString(36).substr(2, 9) }]);
   };
@@ -78,7 +83,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider value={{
       cases, hospitals, doctors, volunteers, currentRole, setRole,
-      createCase, acceptCase, registerHospital, registerDoctor, registerVolunteer,
+      createCase, acceptCase, updateCaseStatus, registerHospital, registerDoctor, registerVolunteer,
       updateDoctorAvailability
     }}>
       {children}
