@@ -68,10 +68,11 @@ Ambulance is tracked in real time
 - 📈 Predictive emergency hotspot detection
 
 ## 👥 Team
-Your Name - Sumedha Kulkarni
-- Team Members - Rutuja Patil
- - Shruti Shejul
+
+- Team Members - Shruti Shejul
+ - Rutuja Patil
  - Nikita Thorat
+ - Sumedha Kulkarni
 
 ## 📜 License
 ### This project is licensed under the MIT License.
