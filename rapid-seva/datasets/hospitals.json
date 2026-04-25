@@ -1,0 +1,123 @@
+[
+  {
+    "id": "h1",
+    "name": "Government Medical College Hospital",
+    "lat": 19.901,
+    "lng": 75.352,
+    "trauma_center": true,
+    "icu": true,
+    "beds_available": 10,
+    "hospital_score": 30
+  },
+  {
+    "id": "h2",
+    "name": "City Care Hospital",
+    "lat": 19.88,
+    "lng": 75.32,
+    "trauma_center": false,
+    "icu": true,
+    "beds_available": 5,
+    "hospital_score": 20
+  },
+  {
+    "id": "h3",
+    "name": "Apollo Hospital Aurangabad",
+    "lat": 19.876,
+    "lng": 75.343,
+    "trauma_center": true,
+    "icu": true,
+    "beds_available": 15,
+    "hospital_score": 40
+  },
+  {
+    "id": "h4",
+    "name": "MGM Medical Center",
+    "lat": 19.869,
+    "lng": 75.355,
+    "trauma_center": true,
+    "icu": true,
+    "beds_available": 20,
+    "hospital_score": 45
+  },
+  {
+    "id": "h5",
+    "name": "Kamalnayan Bajaj Hospital",
+    "lat": 19.863,
+    "lng": 75.339,
+    "trauma_center": true,
+    "icu": true,
+    "beds_available": 12,
+    "hospital_score": 38
+  },
+  {
+    "id": "h6",
+    "name": "Sigma Hospital",
+    "lat": 19.892,
+    "lng": 75.347,
+    "trauma_center": false,
+    "icu": true,
+    "beds_available": 8,
+    "hospital_score": 25
+  },
+  {
+    "id": "h7",
+    "name": "Dhoot Hospital",
+    "lat": 19.882,
+    "lng": 75.361,
+    "trauma_center": true,
+    "icu": true,
+    "beds_available": 18,
+    "hospital_score": 42
+  },
+  {
+    "id": "h8",
+    "name": "United CIIGMA Hospital",
+    "lat": 19.895,
+    "lng": 75.330,
+    "trauma_center": true,
+    "icu": true,
+    "beds_available": 14,
+    "hospital_score": 39
+  },
+  {
+    "id": "h9",
+    "name": "Seth Nandlal Dhoot Hospital",
+    "lat": 19.878,
+    "lng": 75.349,
+    "trauma_center": true,
+    "icu": true,
+    "beds_available": 16,
+    "hospital_score": 41
+  },
+  {
+    "id": "h10",
+    "name": "Lifeline Hospital",
+    "lat": 19.884,
+    "lng": 75.334,
+    "trauma_center": false,
+    "icu": true,
+    "beds_available": 6,
+    "hospital_score": 22
+  },
+  {
+    "id": "h11",
+    "name": "Asian Hospital",
+    "lat": 19.871,
+    "lng": 75.326,
+    "trauma_center": false,
+    "icu": true,
+    "beds_available": 9,
+    "hospital_score": 26
+  },
+  {
+    "id": "h12",
+    "name": "Sai Hospital Aurangabad",
+    "lat": 19.889,
+    "lng": 75.358,
+    "trauma_center": true,
+    "icu": false,
+    "beds_available": 7,
+    "hospital_score": 28
+  }
+
+]

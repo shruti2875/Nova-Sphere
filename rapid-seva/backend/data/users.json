@@ -1,0 +1,99 @@
+[
+  {
+    "id": "u1",
+    "name": "Rahul",
+    "lat": 19.88,
+    "lng": 75.33,
+    "phone": "+917777777777",
+    "is_helper": true
+  },
+  {
+    "id": "u2",
+    "name": "Priya",
+    "lat": 19.90,
+    "lng": 75.35,
+    "phone": "+916666666666",
+    "is_helper": true
+  },
+  
+  {
+    "id": "u3",
+    "name": "Amit",
+    "lat": 19.882,
+    "lng": 75.346,
+    "phone": "+919111111111",
+    "is_helper": true
+  },
+  {
+    "id": "u4",
+    "name": "Sneha",
+    "lat": 19.876,
+    "lng": 75.332,
+    "phone": "+919222222222",
+    "is_helper": false
+  },
+  {
+    "id": "u5",
+    "name": "Vikas",
+    "lat": 19.891,
+    "lng": 75.351,
+    "phone": "+919333333333",
+    "is_helper": true
+  },
+  {
+    "id": "u6",
+    "name": "Neha",
+    "lat": 19.868,
+    "lng": 75.339,
+    "phone": "+919444444444",
+    "is_helper": false
+  },
+  {
+    "id": "u7",
+    "name": "Rohit",
+    "lat": 19.895,
+    "lng": 75.328,
+    "phone": "+919555555555",
+    "is_helper": true
+  },
+  {
+    "id": "u8",
+    "name": "Pooja",
+    "lat": 19.883,
+    "lng": 75.357,
+    "phone": "+919666666666",
+    "is_helper": false
+  },
+  {
+    "id": "u9",
+    "name": "Karan",
+    "lat": 19.879,
+    "lng": 75.345,
+    "phone": "+919777777777",
+    "is_helper": true
+  },
+  {
+    "id": "u10",
+    "name": "Anjali",
+    "lat": 19.887,
+    "lng": 75.336,
+    "phone": "+919888888888",
+    "is_helper": true
+  },
+  {
+    "id": "u11",
+    "name": "Sagar",
+    "lat": 19.872,
+    "lng": 75.353,
+    "phone": "+919999999000",
+    "is_helper": false
+  },
+  {
+    "id": "u12",
+    "name": "Meera",
+    "lat": 19.894,
+    "lng": 75.342,
+    "phone": "+918888888000",
+    "is_helper": true
+  }
+]

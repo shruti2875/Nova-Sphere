@@ -1,0 +1,111 @@
+[
+  {
+    "id": "d1",
+    "name": "Dr. Mehta",
+    "specialization": "cardiologist",
+    "lat": 19.89,
+    "lng": 75.34,
+    "available": true,
+    "phone": "+919999999999"
+  },
+  {
+    "id": "d2",
+    "name": "Dr. Khan",
+    "specialization": "general",
+    "lat": 19.87,
+    "lng": 75.31,
+    "available": true,
+    "phone": "+918888888888"
+  },
+  {
+    "id": "d3",
+    "name": "Dr. Sharma",
+    "specialization": "neurologist",
+    "lat": 19.882,
+    "lng": 75.346,
+    "available": true,
+    "phone": "+917777777777"
+  },
+  {
+    "id": "d4",
+    "name": "Dr. Patil",
+    "specialization": "orthopedic",
+    "lat": 19.876,
+    "lng": 75.332,
+    "available": false,
+    "phone": "+916666666666"
+  },
+  {
+    "id": "d5",
+    "name": "Dr. Deshmukh",
+    "specialization": "pediatrician",
+    "lat": 19.891,
+    "lng": 75.351,
+    "available": true,
+    "phone": "+915555555555"
+  },
+  {
+    "id": "d6",
+    "name": "Dr. Kulkarni",
+    "specialization": "dermatologist",
+    "lat": 19.868,
+    "lng": 75.339,
+    "available": true,
+    "phone": "+914444444444"
+  },
+  {
+    "id": "d7",
+    "name": "Dr. Joshi",
+    "specialization": "gynecologist",
+    "lat": 19.895,
+    "lng": 75.328,
+    "available": false,
+    "phone": "+913333333333"
+  },
+  {
+    "id": "d8",
+    "name": "Dr. Shaikh",
+    "specialization": "general",
+    "lat": 19.883,
+    "lng": 75.357,
+    "available": true,
+    "phone": "+912222222222"
+  },
+  {
+    "id": "d9",
+    "name": "Dr. Chavan",
+    "specialization": "cardiologist",
+    "lat": 19.879,
+    "lng": 75.345,
+    "available": true,
+    "phone": "+911111111111"
+  },
+  {
+    "id": "d10",
+    "name": "Dr. Pawar",
+    "specialization": "ENT",
+    "lat": 19.887,
+    "lng": 75.336,
+    "available": false,
+    "phone": "+919090909090"
+  },
+  {
+    "id": "d11",
+    "name": "Dr. Jadhav",
+    "specialization": "psychiatrist",
+    "lat": 19.872,
+    "lng": 75.353,
+    "available": true,
+    "phone": "+918080808080"
+  },
+  {
+    "id": "d12",
+    "name": "Dr. More",
+    "specialization": "general",
+    "lat": 19.894,
+    "lng": 75.342,
+    "available": true,
+    "phone": "+917070707070"
+  }
+
+] 
