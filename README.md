@@ -1,11 +1,11 @@
-# 🚑 Rapid Seva — AI Smart Emergency Response System
+## 🚑 Rapid Seva — AI Smart Emergency Response System
 
 - Overview
 
 - Rapid Seva is an AI-powered emergency response and ambulance coordination platform designed to minimize response time during critical medical situations. By integrating real-time traffic data, intelligent routing, and hospital coordination, Rapid Seva ensures faster and more efficient emergency care.
 In emergencies, every second counts — Rapid Seva helps save those seconds.
 
-# 🚨 Problem Statement
+## 🚨 Problem Statement
 - Emergency medical systems often struggle with:
 
 - 🚦 Traffic congestion delaying ambulances
@@ -15,7 +15,7 @@ In emergencies, every second counts — Rapid Seva helps save those seconds.
 
 -These issues can lead to critical delays and reduced survival chances.
 
-# 💡 Solution
+## 💡 Solution
 - Rapid Seva solves these challenges by:
 
 - 🚑 Automatically assigning the nearest available ambulance
@@ -24,7 +24,7 @@ In emergencies, every second counts — Rapid Seva helps save those seconds.
 - 📍 Enabling real-time tracking of ambulances
 - 🤖 Using AI to predict delays and optimize decisions
 
-# ⚙️ Features
+## ⚙️ Features
 - Smart Ambulance Dispatch
 - Instantly allocates the closest ambulance
 - Real-Time Route Optimization
@@ -38,14 +38,14 @@ In emergencies, every second counts — Rapid Seva helps save those seconds.
 - AI-Powered Decision Engine
 - Improves efficiency and reduces response time
 
-# 🏗️ System Architecture
+## 🏗️ System Architecture
 - User → Emergency Request → AI Engine
                           ├── Ambulance Allocation
                           ├── Route Optimization
                           ├── Hospital Coordination
                           └── Live Tracking Dashboard
 
-# 🛠️ Tech Stack
+## 🛠️ Tech Stack
 - Frontend: React / Flutter
 - Backend: Node.js / FastAPI
 - Database: MongoDB / PostgreSQL
@@ -53,7 +53,7 @@ In emergencies, every second counts — Rapid Seva helps save those seconds.
 - Maps & Routing: Google Maps API / OpenStreetMap
 - Real-Time Communication: WebSockets / Firebase
 
-# 🚀 How It Works
+## 🚀 How It Works
 - User triggers an emergency request
 System detects live location
 AI assigns the nearest ambulance
@@ -67,16 +67,16 @@ Ambulance is tracked in real time
 - 🚁 Drone-based first-aid delivery
 - 📈 Predictive emergency hotspot detection
 
-# 👥 Team
+## 👥 Team
 Your Name - Sumedha Kulkarni
 - Team Members - Rutuja Patil
  - Shruti Shejul
  - Nikita Thorat
 
-# 📜 License
+## 📜 License
 - This project is licensed under the MIT License.
 
-# Impact
+## Impact
 - Rapid Seva aims to:
 
 - ⏱️ Reduce emergency response time
