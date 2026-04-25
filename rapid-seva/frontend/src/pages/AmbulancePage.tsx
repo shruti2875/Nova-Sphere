@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { Truck, MapPin, Clock, CheckCircle, Navigation, AlertCircle, ShieldAlert } from 'lucide-react';
@@ -8,7 +8,9 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
 export default function AmbulancePage() {
-  const { cases, acceptCase, updateCaseStatus } = useApp();
+  const { cases, acceptCase, updateCaseStatus, fetchCases } = useApp();
+
+  useEffect(() => { fetchCases(); }, []);
   const [activeTab, setActiveTab] = useState<'PENDING' | 'ACCEPTED'>('PENDING');
 
   const pendingCases = cases.filter(c => c.status === 'PENDING');

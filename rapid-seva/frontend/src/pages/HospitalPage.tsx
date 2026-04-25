@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { motion } from 'motion/react';
 import { Hospital as HospitalIcon, Bed, Plus, ShieldCheck, MapPin, AlertCircle, ShieldAlert, ArrowRight, TrendingUp } from 'lucide-react';
@@ -9,11 +9,13 @@ import { Location } from '../types';
 import { cn } from '../lib/utils';
 
 export default function HospitalPage() {
-  const { hospitals, registerHospital, cases } = useApp();
+  const { hospitals, registerHospital, cases, fetchHospitals, fetchCases } = useApp();
   const [name, setName] = useState('');
   const [beds, setBeds] = useState(10);
   const [icu, setIcu] = useState(false);
   const [location, setLocation] = useState<Location | null>(null);
+
+  useEffect(() => { fetchHospitals(); fetchCases(); }, []);
 
   const activeCases = cases.filter(c => c.status !== 'COMPLETED');
 

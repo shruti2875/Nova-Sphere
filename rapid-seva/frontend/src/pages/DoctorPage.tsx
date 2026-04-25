@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { motion } from 'motion/react';
 import { UserRound, Stethoscope, Power, MapPin, Users, AlertCircle, ShieldAlert } from 'lucide-react';
@@ -9,10 +9,12 @@ import { Location } from '../types';
 import { cn } from '../lib/utils';
 
 export default function DoctorPage() {
-  const { doctors, registerDoctor, updateDoctorAvailability, cases } = useApp();
+  const { doctors, registerDoctor, updateDoctorAvailability, cases, fetchDoctors, fetchCases } = useApp();
   const [name, setName] = useState('');
   const [spec, setSpec] = useState('');
   const [location, setLocation] = useState<Location | null>(null);
+
+  useEffect(() => { fetchDoctors(); fetchCases(); }, []);
 
   const activeCases = cases.filter(c => c.status !== 'COMPLETED');
 

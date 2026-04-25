@@ -35,19 +35,20 @@ function MapUpdater({ center }: { center: Location }) {
 }
 
 export default function PatientPage() {
-  const { createCase, hospitals, doctors, volunteers } = useApp();
+  const { createCase, hospitals, doctors, fetchHospitals, fetchDoctors } = useApp();
   const [location, setLocation] = useState<Location>({ lat: 18.5204, lng: 73.8567 });
   const [description, setDescription] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [severity, setSeverity] = useState<Severity | null>(null);
   const [survivalScore, setSurvivalScore] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(600); // 10 minutes countdown
+  const [timeLeft, setTimeLeft] = useState(600);
 
-  // Get current location
   useEffect(() => {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition((position) => {
-        setLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+    fetchHospitals();
+    fetchDoctors();
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       });
     }
   }, []);
@@ -59,41 +60,17 @@ export default function PatientPage() {
     }
   }, [isSubmitted, timeLeft]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!description) return;
-
-    // Simulate severity analysis
-    const keywords = ['heart', 'breath', 'blood', 'unconscious', 'accident'];
-    const hasCritical = keywords.some(k => description.toLowerCase().includes(k));
-    const detectedSeverity: Severity = hasCritical ? 'CRITICAL' : (description.length > 30 ? 'MEDIUM' : 'LOW');
-    
-    setSeverity(detectedSeverity);
-    createCase({
-      patientName: 'John Doe', // Simulated user
-      description,
-      severity: detectedSeverity,
-      location,
-    });
-    
-    setSurvivalScore(hasCritical ? 45 : 85);
+    const newCase = await createCase({ patientName: 'Patient', description, location });
+    setSeverity(newCase.severity);
+    setSurvivalScore(newCase.survivalScore ?? (newCase.severity === 'CRITICAL' ? 45 : 85));
     setIsSubmitted(true);
   };
 
-  const calculateDistance = (l1: Location, l2: Location) => {
-    return Math.sqrt(Math.pow(l1.lat - l2.lat, 2) + Math.pow(l1.lng - l2.lng, 2)) * 111; // Approx km
-  };
-
-  const getBestHospital = () => {
-    const sorted = [...hospitals].sort((a, b) => {
-      const distA = calculateDistance(location, a.location);
-      const distB = calculateDistance(location, b.location);
-      if (a.hasICU && !b.hasICU) return -1;
-      if (!a.hasICU && b.hasICU) return 1;
-      return distA - distB;
-    });
-    return sorted[0];
-  };
+  const calculateDistance = (l1: Location, l2: Location) =>
+    Math.sqrt(Math.pow(l1.lat - l2.lat, 2) + Math.pow(l1.lng - l2.lng, 2)) * 111;
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -101,7 +78,7 @@ export default function PatientPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const bestHospital = getBestHospital();
+  const bestHospital = hospitals[0] ?? null;
 
   return (
     <div className="flex h-full gap-4 overflow-hidden">
@@ -272,13 +249,13 @@ export default function PatientPage() {
       <aside className="w-72 flex flex-col gap-4 overflow-y-auto">
         <div className="card-base flex flex-col gap-4 overflow-hidden">
           <h2 className="font-bold text-slate-800 uppercase tracking-tight text-xs">BEST FACILITY</h2>
+          {bestHospital ? (
           <div className="relative p-4 rounded-xl overflow-hidden border border-slate-100 bg-slate-50">
             <div className="absolute top-0 right-0 p-2">
               <span className="text-[10px] font-black text-green-600 bg-green-100 px-1.5 py-0.5 rounded">98% MATCH</span>
             </div>
             <p className="text-sm font-bold text-slate-800 mb-1">{bestHospital.name}</p>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{bestHospital.hasICU ? 'Level I Trauma' : 'Primary Care'}</p>
-            
             <div className="flex items-center justify-between mt-4">
               <div className="text-center">
                  <p className="text-[10px] font-bold text-slate-400">BEDS</p>
@@ -296,6 +273,9 @@ export default function PatientPage() {
               </div>
             </div>
           </div>
+          ) : (
+            <p className="text-xs text-slate-400">Loading facilities...</p>
+          )}
           <button className="w-full py-2.5 border-2 border-slate-50 text-slate-500 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-50">SEE ALL NETWORK</button>
         </div>
 

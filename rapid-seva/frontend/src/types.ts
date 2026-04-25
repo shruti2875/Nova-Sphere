@@ -15,6 +15,7 @@ export interface Case {
   status: 'PENDING' | 'ACCEPTED' | 'ACTIVE' | 'COMPLETED';
   ambulanceId?: string;
   hospitalId?: string;
+  survivalScore?: number;
 }
 
 export interface Hospital {
