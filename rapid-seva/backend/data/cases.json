@@ -1,12 +1,12 @@
 [
   {
-  "case_id": "c1",
-  "description": "heart attack",
-  "lat": 19.89,
-  "lng": 75.34,
-  "severity": "critical",
-  "status": "pending",
-  "timestamp": "2026-04-25T10:00:00"
+    "case_id": "c1",
+    "description": "heart attack",
+    "lat": 19.89,
+    "lng": 75.34,
+    "severity": "critical",
+    "status": "pending",
+    "timestamp": "2026-04-25T10:00:00"
   },
   {
     "case_id": "c2",
@@ -97,5 +97,33 @@
     "severity": "critical",
     "status": "pending",
     "timestamp": "2026-04-25T10:30:00"
+  },
+  {
+    "case_id": "03602d9a",
+    "description": "chest pain and difficulty breathing",
+    "lat": 28.6139,
+    "lng": 77.209,
+    "severity": "medium",
+    "cardiac_case": false,
+    "status": "pending"
+  },
+
+  {
+    "case_id": "c11",
+    "description": "head injury",
+    "lat": 19.894,
+    "lng": 75.342,
+    "severity": "critical",
+    "status": "pending",
+    "timestamp": "2026-04-25T10:30:00"
+  },
+  {
+    "case_id": "03602d9a",
+    "description": "chest pain and difficulty breathing",
+    "lat": 28.6139,
+    "lng": 77.209,
+    "severity": "medium",
+    "cardiac_case": false,
+    "status": "pending"
   }
 ]

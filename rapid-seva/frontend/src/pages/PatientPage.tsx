@@ -2,322 +2,344 @@ import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { useApp } from '../context/AppContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { MapPin, Navigation, Send, AlertTriangle, Hospital, User, Clock, HeartPulse, ShieldAlert, AlertCircle, UserRound, Bot } from 'lucide-react';
-import { Severity, Location } from '../types';
+import { MapPin, Send, Bot, Heart, CheckCircle, Truck, Clock, Sparkles } from 'lucide-react';
+import { useApp } from '../context/AppContext';
+import { EmergencyCase, Severity } from '../types';
 import { cn } from '../lib/utils';
 
-// Fix Leaflet icon issue by using static paths if assets fail
-const DefaultIcon = L.icon({
+L.Marker.prototype.options.icon = L.icon({
   iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41]
+  iconSize: [25, 41], iconAnchor: [12, 41],
 });
-L.Marker.prototype.options.icon = DefaultIcon;
 
-function LocationSelector({ onLocationChange }: { onLocationChange: (loc: Location) => void }) {
-  useMapEvents({
-    click(e) {
-      onLocationChange({ lat: e.latlng.lat, lng: e.latlng.lng });
-    },
-  });
+const SEV_STYLE: Record<Severity, { bg: string; text: string; border: string; bar: string; label: string }> = {
+  low:      { bg: 'bg-green-50',  text: 'text-green-700',  border: 'border-green-200',  bar: 'bg-green-500',  label: 'LOW' },
+  medium:   { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200', bar: 'bg-yellow-500', label: 'MEDIUM' },
+  high:     { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', bar: 'bg-orange-500', label: 'HIGH' },
+  critical: { bg: 'bg-red-50',    text: 'text-red-700',    border: 'border-red-200',    bar: 'bg-red-600',    label: 'CRITICAL' },
+};
+
+const STATUS_STEPS = ['pending', 'assigned', 'active', 'completed'] as const;
+const STATUS_LABEL: Record<string, string> = {
+  pending: 'Waiting for ambulance...',
+  assigned: '🚑 Ambulance dispatched!',
+  active: '🏥 En route to hospital',
+  completed: '✅ Case resolved',
+};
+
+function MapClicker({ onPick }: { onPick: (lat: number, lng: number) => void }) {
+  useMapEvents({ click: e => onPick(e.latlng.lat, e.latlng.lng) });
   return null;
 }
-
-function MapUpdater({ center }: { center: Location }) {
+function MapFly({ lat, lng }: { lat: number; lng: number }) {
   const map = useMap();
-  useEffect(() => {
-    map.setView([center.lat, center.lng], map.getZoom());
-  }, [center, map]);
+  useEffect(() => { map.setView([lat, lng], map.getZoom()); }, [lat, lng]);
   return null;
 }
 
 export default function PatientPage() {
-  const { createCase, hospitals, doctors, volunteers } = useApp();
-  const [location, setLocation] = useState<Location>({ lat: 18.5204, lng: 73.8567 });
-  const [description, setDescription] = useState('');
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [severity, setSeverity] = useState<Severity | null>(null);
-  const [survivalScore, setSurvivalScore] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(600); // 10 minutes countdown
+  const { submitCase, hospitals, doctors, cases, firestoreReady } = useApp();
+  const [lat, setLat] = useState(18.5204);
+  const [lng, setLng] = useState(73.8567);
+  const [name, setName] = useState('');
+  const [desc, setDesc] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [submittedId, setSubmittedId] = useState<string | null>(null);
+  const [eta, setEta] = useState(600);
 
-  // Get current location
+  // Live case — always reads from Firestore snapshot, no manual refresh needed
+  const liveCase = submittedId ? cases.find(c => c.id === submittedId) ?? null : null;
+
   useEffect(() => {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition((position) => {
-        setLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
-      });
-    }
+    navigator.geolocation?.getCurrentPosition(p => {
+      setLat(p.coords.latitude);
+      setLng(p.coords.longitude);
+    });
   }, []);
 
+  // Countdown timer
   useEffect(() => {
-    if (isSubmitted && timeLeft > 0) {
-      const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
-      return () => clearInterval(timer);
-    }
-  }, [isSubmitted, timeLeft]);
+    if (!liveCase) return;
+    const t = setInterval(() => setEta(e => Math.max(0, e - 1)), 1000);
+    return () => clearInterval(t);
+  }, [!!liveCase]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!description) return;
-
-    // Simulate severity analysis
-    const keywords = ['heart', 'breath', 'blood', 'unconscious', 'accident'];
-    const hasCritical = keywords.some(k => description.toLowerCase().includes(k));
-    const detectedSeverity: Severity = hasCritical ? 'CRITICAL' : (description.length > 30 ? 'MEDIUM' : 'LOW');
-    
-    setSeverity(detectedSeverity);
-    createCase({
-      patientName: 'John Doe', // Simulated user
-      description,
-      severity: detectedSeverity,
-      location,
-    });
-    
-    setSurvivalScore(hasCritical ? 45 : 85);
-    setIsSubmitted(true);
+    if (!desc.trim() || !name.trim()) return;
+    setLoading(true);
+    try {
+      const c = await submitCase(name, desc, lat, lng);
+      setSubmittedId(c.id);
+      setEta(600);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const calculateDistance = (l1: Location, l2: Location) => {
-    return Math.sqrt(Math.pow(l1.lat - l2.lat, 2) + Math.pow(l1.lng - l2.lng, 2)) * 111; // Approx km
-  };
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const dist = (la: number, lo: number) => Math.sqrt((lat - la) ** 2 + (lng - lo) ** 2) * 111;
 
-  const getBestHospital = () => {
-    const sorted = [...hospitals].sort((a, b) => {
-      const distA = calculateDistance(location, a.location);
-      const distB = calculateDistance(location, b.location);
-      if (a.hasICU && !b.hasICU) return -1;
-      if (!a.hasICU && b.hasICU) return 1;
-      return distA - distB;
-    });
-    return sorted[0];
-  };
+  const bestHospital = liveCase
+    ? [...hospitals].sort((a, b) => {
+        if (a.hasICU && !b.hasICU) return -1;
+        if (!a.hasICU && b.hasICU) return 1;
+        return dist(a.lat, a.lng) - dist(b.lat, b.lng);
+      })[0] ?? null
+    : null;
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const bestHospital = getBestHospital();
+  const sev = liveCase ? SEV_STYLE[liveCase.severity] : null;
+  const stepIndex = liveCase ? STATUS_STEPS.indexOf(liveCase.status as any) : -1;
 
   return (
-    <div className="flex h-full gap-4 overflow-hidden">
-      {/* Sidebar */}
-      <aside className="w-80 flex flex-col gap-4 overflow-y-auto pr-1">
-        {!isSubmitted ? (
-          <motion.div 
-            initial={{ x: -20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            className="card-base"
-          >
-            <div className="flex justify-between items-start mb-6">
-              <h2 className="font-bold text-slate-800">REQUEST HELP</h2>
-              <span className="badge-critical bg-blue-100 text-blue-700">PATIENT MODE</span>
-            </div>
-            
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] font-bold text-slate-400 flex items-center gap-2">
-                <MapPin size={12} className="text-red-500" />
-                GPS: {location.lat.toFixed(4)}, {location.lng.toFixed(4)}
+    <div className="flex h-full gap-3 overflow-hidden">
+      {/* Left sidebar */}
+      <aside className="w-72 flex flex-col gap-3 overflow-y-auto shrink-0">
+        <AnimatePresence mode="wait">
+          {!liveCase ? (
+            <motion.div key="form" initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} className="card-base">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="font-black text-slate-800 text-sm uppercase">Request Help</h2>
+                <span className="badge-critical bg-blue-100 text-blue-700">PATIENT</span>
               </div>
 
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Describe the medical emergency..."
-                className="w-full p-4 h-32 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-red-500 outline-none text-sm transition-all"
-                required
-              />
-
-              <button type="submit" className="btn-primary w-full shadow-red-100">
-                REQUEST IMMEDIATE HELP
-              </button>
-            </form>
-          </motion.div>
-        ) : (
-          <motion.div 
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="card-base"
-          >
-            <div className="flex justify-between items-start mb-6">
-              <h2 className="font-bold text-slate-800 uppercase tracking-tight">ACTIVE CASE</h2>
-              <span className={cn(
-                "badge-critical",
-                severity === 'CRITICAL' ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700"
-              )}>
-                {severity}
-              </span>
-            </div>
-
-            <div className={cn(
-              "p-4 rounded-xl border mb-4",
-              severity === 'CRITICAL' ? "bg-red-50 border-red-100" : "bg-orange-50 border-orange-100"
-            )}>
-              <p className={cn(
-                "text-sm font-bold mb-1",
-                severity === 'CRITICAL' ? "text-red-900" : "text-orange-900"
-              )}>Active Emergency</p>
-              <p className={cn(
-                "text-xs leading-tight opacity-80",
-                severity === 'CRITICAL' ? "text-red-700" : "text-orange-700"
-              )}>{description}</p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 mb-6">
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Survival Score</p>
-                <div className="flex items-end gap-1">
-                  <span className="text-2xl font-black text-slate-800">{survivalScore}</span>
-                  <span className="text-sm font-bold text-green-500 mb-1">%</span>
+              {!firestoreReady && (
+                <div className="mb-3 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[10px] font-bold text-amber-700 flex items-center gap-2">
+                  <span className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                  Connecting to network...
                 </div>
-              </div>
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Response ETA</p>
-                <div className="flex items-end gap-1">
-                  <span className="text-xl font-black text-slate-800">{formatTime(timeLeft)}</span>
-                </div>
-              </div>
-            </div>
+              )}
 
-            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-               <motion.div 
-                initial={{ width: 0 }}
-                animate={{ width: `${survivalScore}%` }}
-                className={cn(
-                  "h-full rounded-full transition-all duration-1000",
-                  survivalScore > 70 ? "bg-green-500" : survivalScore > 40 ? "bg-orange-500" : "bg-red-600"
+              <form onSubmit={handleSubmit} className="space-y-3">
+                <input
+                  value={name} onChange={e => setName(e.target.value)}
+                  placeholder="Your name"
+                  className="input-base w-full text-sm"
+                  required
+                />
+                <div className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-[10px] font-bold text-slate-400">
+                  <MapPin size={11} className="text-red-500 shrink-0" />
+                  {lat.toFixed(4)}, {lng.toFixed(4)} — click map to change
+                </div>
+                <textarea
+                  value={desc} onChange={e => setDesc(e.target.value)}
+                  placeholder="Describe the emergency (e.g. heart attack, accident, bleeding...)"
+                  className="input-base w-full h-28 resize-none text-sm"
+                  required
+                />
+                <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 text-sm">
+                  {loading ? (
+                    <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />AI Analyzing...</>
+                  ) : (
+                    <><Send size={14} />REQUEST IMMEDIATE HELP</>
+                  )}
+                </button>
+              </form>
+            </motion.div>
+          ) : (
+            <motion.div key="status" initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="card-base">
+              <div className="flex justify-between items-center mb-3">
+                <h2 className="font-black text-slate-800 text-sm uppercase">Active Case</h2>
+                <span className={cn('px-2 py-0.5 rounded text-[10px] font-black uppercase border', sev?.bg, sev?.text, sev?.border)}>
+                  {sev?.label}
+                </span>
+              </div>
+
+              {liveCase.isCardiac && (
+                <div className="flex items-center gap-2 p-2 bg-red-50 border border-red-100 rounded-xl mb-3">
+                  <Heart size={14} className="text-red-600 animate-pulse" />
+                  <span className="text-xs font-bold text-red-700">Cardiac Emergency — AI Flagged</span>
+                </div>
+              )}
+
+              {/* Live status tracker — updates automatically from Firestore */}
+              <div className="mb-3 p-3 rounded-xl border border-slate-100 bg-slate-50">
+                <p className="text-[9px] font-black text-slate-400 uppercase mb-2">Live Status</p>
+                <div className="flex items-center gap-1 mb-2">
+                  {STATUS_STEPS.map((s, i) => (
+                    <React.Fragment key={s}>
+                      <div className={cn('w-2 h-2 rounded-full transition-all duration-500', i <= stepIndex ? 'bg-green-500 scale-125' : 'bg-slate-200')} />
+                      {i < STATUS_STEPS.length - 1 && (
+                        <div className={cn('flex-1 h-0.5 transition-all duration-700', i < stepIndex ? 'bg-green-500' : 'bg-slate-200')} />
+                      )}
+                    </React.Fragment>
+                  ))}
+                </div>
+                <p className={cn('text-xs font-bold', liveCase.status === 'assigned' ? 'text-green-700' : 'text-slate-600')}>
+                  {STATUS_LABEL[liveCase.status]}
+                </p>
+                {liveCase.assignedAmbulance && (
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <Truck size={11} className="text-blue-500" />
+                    <span className="text-[10px] font-bold text-blue-600">{liveCase.assignedAmbulance}</span>
+                  </div>
                 )}
-              />
-            </div>
-          </motion.div>
-        )}
+              </div>
 
-        <div className="card-base flex-1 overflow-hidden flex flex-col">
-          <h2 className="font-bold text-slate-800 mb-3 uppercase tracking-tight text-xs">NEARBY DOCTORS</h2>
-          <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-            {doctors.filter(d => d.isAvailable).map(doctor => (
-              <div key={doctor.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">Dr.</div>
-                <div className="flex-1">
-                  <p className="text-sm font-bold truncate">{doctor.name}</p>
-                  <p className="text-[10px] text-slate-500 uppercase font-bold tracking-tighter">
-                    {doctor.specialization} • {calculateDistance(location, doctor.location).toFixed(1)}km
-                  </p>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
+                  <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Survival Score</p>
+                  <p className="text-2xl font-black text-slate-800">{liveCase.survivalScore}<span className="text-sm text-green-500">%</span></p>
                 </div>
-                <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-center">
+                  <p className="text-[9px] font-black text-slate-400 uppercase mb-1">ETA</p>
+                  <p className="text-xl font-black text-slate-800">{fmt(eta)}</p>
+                </div>
+              </div>
+
+              <div className="mb-1 flex justify-between text-[9px] font-bold text-slate-400 uppercase">
+                <span>Survival Probability</span><span>{liveCase.survivalScore}%</span>
+              </div>
+              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${liveCase.survivalScore}%` }}
+                  transition={{ duration: 1.2, ease: 'easeOut' }}
+                  className={cn('h-full rounded-full', sev?.bar)}
+                />
+              </div>
+
+              <button
+                onClick={() => { setSubmittedId(null); setName(''); setDesc(''); }}
+                className="mt-3 w-full py-2 border border-slate-200 text-slate-500 rounded-xl text-[10px] font-black uppercase hover:bg-slate-50 transition-colors"
+              >
+                New Emergency
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Nearby Doctors — live from Firestore */}
+        <div className="card-base flex-1 overflow-hidden flex flex-col min-h-0">
+          <div className="flex items-center gap-2 mb-3">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nearby Doctors</h3>
+            <span className="text-[9px] font-black text-green-600 bg-green-100 px-1.5 py-0.5 rounded">
+              {doctors.filter(d => d.isAvailable).length} available
+            </span>
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-2">
+            {doctors.filter(d => d.isAvailable).length === 0 && (
+              <p className="text-xs text-slate-400 text-center py-4">No doctors available</p>
+            )}
+            {doctors.filter(d => d.isAvailable).map(d => (
+              <div key={d.id} className="flex items-center gap-2.5 p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-[10px] font-black shrink-0">Dr</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold truncate">{d.name}</p>
+                  <p className="text-[9px] text-slate-400 uppercase font-bold">{d.specialization} • {dist(d.lat, d.lng).toFixed(1)}km</p>
+                </div>
+                <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
               </div>
             ))}
           </div>
         </div>
       </aside>
 
-      {/* Map Main */}
-      <div className="flex-1 flex flex-col gap-4">
-        <div className="flex-1 bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden relative">
-          <MapContainer 
-            center={[location.lat, location.lng]} 
-            zoom={13} 
-            style={{ height: '100%', width: '100%' }}
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            <LocationSelector onLocationChange={setLocation} />
-            <MapUpdater center={location} />
-            
-            <Marker position={[location.lat, location.lng]} />
-            
+      {/* Map */}
+      <div className="flex-1 flex flex-col gap-3 min-w-0">
+        <div className="flex-1 rounded-2xl overflow-hidden border border-slate-200 shadow-sm relative">
+          <MapContainer center={[lat, lng]} zoom={13} style={{ height: '100%', width: '100%' }}>
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            {!liveCase && <MapClicker onPick={(la, lo) => { setLat(la); setLng(lo); }} />}
+            <MapFly lat={lat} lng={lng} />
+            <Marker position={[lat, lng]} />
             {hospitals.map(h => (
-              <Marker key={h.id} position={[h.location.lat, h.location.lng]} icon={L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/3063/3063201.png', iconSize: [32, 32] })} />
+              <Marker key={h.id} position={[h.lat, h.lng]}
+                icon={L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/3063/3063201.png', iconSize: [28, 28] })} />
             ))}
-            
             {doctors.filter(d => d.isAvailable).map(d => (
-              <Marker key={d.id} position={[d.location.lat, d.location.lng]} icon={L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/2813/2813083.png', iconSize: [32, 32] })} />
+              <Marker key={d.id} position={[d.lat, d.lng]}
+                icon={L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/2813/2813083.png', iconSize: [28, 28] })} />
             ))}
           </MapContainer>
-
-          <div className="absolute top-6 left-6 z-10">
-             <div className="bg-white/90 backdrop-blur-md p-3 rounded-2xl shadow-xl border border-slate-200">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-1">Signal Status</p>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                  <p className="text-sm font-bold text-slate-800">Downtown Medical Zone</p>
-                </div>
-             </div>
+          <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow border border-slate-200 flex items-center gap-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider">
+              {liveCase ? 'Emergency Active' : 'Click map to set location'}
+            </span>
           </div>
         </div>
 
-        <div className="h-24 bg-indigo-900 rounded-2xl flex items-center px-8 gap-6 text-white shadow-xl overflow-hidden relative">
-          <div className="absolute top-0 right-0 p-1 opacity-10">
-            <Bot size={80} />
-          </div>
+        {/* AI Banner */}
+        <div className="h-16 bg-indigo-900 rounded-2xl flex items-center px-5 gap-4 text-white shrink-0 overflow-hidden relative">
+          <div className="absolute right-2 opacity-10"><Bot size={60} /></div>
+          <Sparkles size={18} className="text-indigo-300 shrink-0" />
           <div className="flex-1 z-10">
-            <h3 className="text-xs font-bold text-indigo-300 uppercase mb-1 tracking-widest">AI Seva Assistant</h3>
-            <p className="text-sm text-indigo-50 font-medium truncate">
-              {isSubmitted ? "Alert sent to nearby units. Keep patient calm and stay where you are." : "Ready to provide first-aid guidance if needed."}
+            <p className="text-[9px] font-black text-indigo-300 uppercase tracking-widest">AI Seva — Medical Assistant</p>
+            <p className="text-xs text-indigo-100 font-medium">
+              {liveCase?.isCardiac
+                ? 'Cardiac case detected. Nearest cardiac hospital prioritized.'
+                : liveCase
+                ? 'Help is on the way. Keep the patient calm and still.'
+                : 'Ready to provide first-aid guidance. Click the chat icon →'}
             </p>
-          </div>
-          <div className="flex gap-2 z-10">
-            <button className="px-6 py-2 bg-white text-indigo-900 rounded-lg font-black text-xs uppercase shadow-lg">Open Guide</button>
           </div>
         </div>
       </div>
 
-      {/* Right Aside */}
-      <aside className="w-72 flex flex-col gap-4 overflow-y-auto">
-        <div className="card-base flex flex-col gap-4 overflow-hidden">
-          <h2 className="font-bold text-slate-800 uppercase tracking-tight text-xs">BEST FACILITY</h2>
-          <div className="relative p-4 rounded-xl overflow-hidden border border-slate-100 bg-slate-50">
-            <div className="absolute top-0 right-0 p-2">
-              <span className="text-[10px] font-black text-green-600 bg-green-100 px-1.5 py-0.5 rounded">98% MATCH</span>
-            </div>
-            <p className="text-sm font-bold text-slate-800 mb-1">{bestHospital.name}</p>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{bestHospital.hasICU ? 'Level I Trauma' : 'Primary Care'}</p>
-            
-            <div className="flex items-center justify-between mt-4">
-              <div className="text-center">
-                 <p className="text-[10px] font-bold text-slate-400">BEDS</p>
-                 <p className="text-sm font-black text-slate-700">{bestHospital.availableBeds}</p>
-              </div>
-              <div className="w-[1px] h-6 bg-slate-200"></div>
-              <div className="text-center">
-                 <p className="text-[10px] font-bold text-slate-400">ICU</p>
-                 <p className="text-sm font-black text-slate-700">{bestHospital.hasICU ? 'YES' : 'NO'}</p>
-              </div>
-              <div className="w-[1px] h-6 bg-slate-200"></div>
-              <div className="text-center">
-                 <p className="text-[10px] font-bold text-slate-400">DIST</p>
-                 <p className="text-sm font-black text-slate-700">{calculateDistance(location, bestHospital.location).toFixed(1)}km</p>
-              </div>
-            </div>
+      {/* Right sidebar — Best Hospital */}
+      <aside className="w-60 flex flex-col gap-3 overflow-y-auto shrink-0">
+        <div className="card-base">
+          <div className="flex items-center gap-2 mb-3">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Best Facility</h3>
+            {liveCase?.isCardiac && (
+              <span className="text-[9px] font-black text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-100">CARDIAC</span>
+            )}
           </div>
-          <button className="w-full py-2.5 border-2 border-slate-50 text-slate-500 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-50">SEE ALL NETWORK</button>
+          {bestHospital ? (
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <div className="flex justify-between items-start mb-2">
+                <p className="text-xs font-black text-slate-800 leading-tight">{bestHospital.name}</p>
+                <span className="text-[9px] font-black text-green-600 bg-green-100 px-1.5 py-0.5 rounded ml-1 shrink-0">AI PICK</span>
+              </div>
+              <p className="text-[9px] text-slate-400 font-bold uppercase mb-3">{bestHospital.hasICU ? 'Level I Trauma · ICU' : 'Primary Care'}</p>
+              <div className="grid grid-cols-3 gap-1 text-center">
+                {([['BEDS', bestHospital.availableBeds], ['ICU', bestHospital.hasICU ? 'YES' : 'NO'], ['DIST', `${dist(bestHospital.lat, bestHospital.lng).toFixed(1)}k`]] as [string, string | number][]).map(([l, v]) => (
+                  <div key={l} className="bg-white rounded-lg p-1.5 border border-slate-100">
+                    <p className="text-[8px] font-bold text-slate-400">{l}</p>
+                    <p className="text-xs font-black text-slate-700">{v}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 text-center py-4">
+              {hospitals.length === 0 ? 'No hospitals registered' : 'Submit case to see recommendation'}
+            </p>
+          )}
         </div>
 
-        <div className="card-base flex-1 flex flex-col gap-4 overflow-hidden">
-          <h2 className="font-bold text-slate-800 uppercase tracking-tight text-xs">EMERGENCY LOG</h2>
-          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-            <div className="relative pl-6 border-l-2 border-green-500">
-              <div className="absolute -left-1.5 top-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
-              <p className="text-[10px] font-black text-slate-400 uppercase">SYSTEM</p>
-              <p className="text-xs font-bold text-slate-700">Network connection stable</p>
+        {/* Emergency Log — live */}
+        <div className="card-base flex-1 overflow-hidden flex flex-col min-h-0">
+          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Emergency Log</h3>
+          <div className="flex-1 overflow-y-auto space-y-3">
+            <div className="relative pl-5 border-l-2 border-green-400">
+              <div className="absolute -left-1.5 top-0 w-3 h-3 bg-green-400 rounded-full border-2 border-white" />
+              <p className="text-[9px] font-black text-slate-400 uppercase">System</p>
+              <p className="text-xs font-bold text-slate-700">
+                {firestoreReady ? 'Network connected' : 'Connecting...'}
+              </p>
             </div>
-            {isSubmitted && (
+            {liveCase && (
               <>
-                <div className="relative pl-6 border-l-2 border-green-500">
-                  <div className="absolute -left-1.5 top-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase">Alert</p>
-                  <p className="text-xs font-bold text-slate-700">Emergency signal broadcasted</p>
+                <div className="relative pl-5 border-l-2 border-red-400">
+                  <div className="absolute -left-1.5 top-0 w-3 h-3 bg-red-400 rounded-full border-2 border-white" />
+                  <p className="text-[9px] font-black text-slate-400 uppercase">AI Analysis</p>
+                  <p className="text-xs font-bold text-slate-700 capitalize">Severity: {liveCase.severity} · Score: {liveCase.survivalScore}%</p>
                 </div>
-                <div className="relative pl-6 border-l-2 border-amber-400">
-                  <div className="absolute -left-1.5 top-0 w-3 h-3 bg-amber-400 rounded-full border-2 border-white animate-pulse"></div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase">PENDING</p>
-                  <p className="text-xs font-bold text-slate-700">Waiting for ambulance response</p>
+                <div className="relative pl-5 border-l-2 border-blue-400">
+                  <div className="absolute -left-1.5 top-0 w-3 h-3 bg-blue-400 rounded-full border-2 border-white" />
+                  <p className="text-[9px] font-black text-slate-400 uppercase">Broadcast</p>
+                  <p className="text-xs font-bold text-slate-700">Alert sent to all units</p>
+                </div>
+                <div className={cn('relative pl-5 border-l-2', liveCase.status === 'assigned' ? 'border-green-400' : 'border-amber-400')}>
+                  <div className={cn('absolute -left-1.5 top-0 w-3 h-3 rounded-full border-2 border-white', liveCase.status === 'assigned' ? 'bg-green-400' : 'bg-amber-400 animate-pulse')} />
+                  <p className="text-[9px] font-black text-slate-400 uppercase">Ambulance</p>
+                  <p className="text-xs font-bold text-slate-700">
+                    {liveCase.status === 'assigned' ? `${liveCase.assignedAmbulance} dispatched` : 'Awaiting response...'}
+                  </p>
                 </div>
               </>
             )}

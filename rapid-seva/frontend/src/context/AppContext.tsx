@@ -1,85 +1,152 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Case, Hospital, Doctor, Volunteer, Role, Severity } from '../types';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import {
+  collection, addDoc, updateDoc, doc, onSnapshot,
+  query, orderBy, getDoc
+} from 'firebase/firestore';
+import { db } from '../firebase';
+import { EmergencyCase, Hospital, Doctor, Role, Severity } from '../types';
+import { api } from '../api';
 
 interface AppContextType {
-  cases: Case[];
+  cases: EmergencyCase[];
   hospitals: Hospital[];
   doctors: Doctor[];
-  volunteers: Volunteer[];
   currentRole: Role | null;
+  backendOnline: boolean;
+  firestoreReady: boolean;
   setRole: (role: Role | null) => void;
-  createCase: (caseData: Omit<Case, 'id' | 'timestamp' | 'status'>) => void;
-  acceptCase: (caseId: string, ambulanceId: string) => void;
-  registerHospital: (hospital: Omit<Hospital, 'id'>) => void;
-  registerDoctor: (doctor: Omit<Doctor, 'id'>) => void;
-  registerVolunteer: (volunteer: Omit<Volunteer, 'id'>) => void;
-  updateDoctorAvailability: (doctorId: string, available: boolean) => void;
+  submitCase: (patientName: string, description: string, lat: number, lng: number) => Promise<EmergencyCase>;
+  acceptCase: (caseId: string, ambulanceId: string) => Promise<void>;
+  completeCase: (caseId: string) => Promise<void>;
+  registerHospital: (data: Omit<Hospital, 'id'>) => Promise<void>;
+  registerDoctor: (data: Omit<Doctor, 'id'>) => Promise<void>;
+  toggleDoctorAvailability: (doctorId: string, available: boolean) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+function localSeverity(desc: string): { severity: Severity; isCardiac: boolean; survivalScore: number } {
+  const d = desc.toLowerCase();
+  const critical = ['heart attack', 'unconscious', 'not breathing', 'stroke', 'accident', 'cardiac', 'no pulse'];
+  const high = ['bleeding', 'fracture', 'burn', 'chest pain', 'seizure', 'broken'];
+  const medium = ['pain', 'fever', 'vomit', 'dizzy', 'breathe', 'faint', 'weak'];
+  if (critical.some(k => d.includes(k))) return { severity: 'critical', isCardiac: d.includes('heart') || d.includes('cardiac') || d.includes('chest'), survivalScore: 42 };
+  if (high.some(k => d.includes(k))) return { severity: 'high', isCardiac: false, survivalScore: 60 };
+  if (medium.some(k => d.includes(k))) return { severity: 'medium', isCardiac: false, survivalScore: 75 };
+  return { severity: 'low', isCardiac: false, survivalScore: 90 };
+}
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [cases, setCases] = useState<Case[]>([]);
-  const [hospitals, setHospitals] = useState<Hospital[]>([
-    { id: '1', name: 'City Central Hospital', location: { lat: 18.5204, lng: 73.8567 }, hasICU: true, availableBeds: 5, totalBeds: 50 },
-    { id: '2', name: 'Lifeline Medical Center', location: { lat: 18.5304, lng: 73.8667 }, hasICU: true, availableBeds: 2, totalBeds: 30 }
-  ]);
-  const [doctors, setDoctors] = useState<Doctor[]>([
-    { id: 'd1', name: 'Dr. Sharma', specialization: 'Cardiologist', location: { lat: 18.5104, lng: 73.8467 }, isAvailable: true },
-    { id: 'd2', name: 'Dr. Patil', specialization: 'General Surgeon', location: { lat: 18.5404, lng: 73.8767 }, isAvailable: true }
-  ]);
-  const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
+  const [cases, setCases] = useState<EmergencyCase[]>([]);
+  const [hospitals, setHospitals] = useState<Hospital[]>([]);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [currentRole, setCurrentRole] = useState<Role | null>(null);
+  const [backendOnline, setBackendOnline] = useState(false);
+  const [firestoreReady, setFirestoreReady] = useState(false);
+  const alertedIds = useRef<Set<string>>(new Set());
+
+  // Check Flask backend health
+  useEffect(() => {
+    fetch('http://localhost:5000/health')
+      .then(() => setBackendOnline(true))
+      .catch(() => setBackendOnline(false));
+  }, []);
+
+  // Real-time Firestore listeners — with error handling for permission-denied
+  useEffect(() => {
+    const unsubCases = onSnapshot(
+      query(collection(db, 'cases'), orderBy('timestamp', 'desc')),
+      (snap) => {
+        setFirestoreReady(true);
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as EmergencyCase));
+        setCases(data);
+        data.forEach(c => {
+          if (c.severity === 'critical' && c.status === 'pending' && !alertedIds.current.has(c.id)) {
+            alertedIds.current.add(c.id);
+            window.dispatchEvent(new CustomEvent('emergency-alert', { detail: c }));
+          }
+        });
+      },
+      (err) => {
+        console.warn('Firestore cases listener error:', err.code);
+        if (err.code === 'permission-denied') {
+          console.error(
+            '%c⚠ Firestore Permission Denied\n' +
+            'Go to Firebase Console → Firestore → Rules and set:\n\n' +
+            'rules_version = \'2\';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}',
+            'color: red; font-size: 14px;'
+          );
+        }
+      }
+    );
+
+    const unsubHospitals = onSnapshot(
+      collection(db, 'hospitals'),
+      (snap) => setHospitals(snap.docs.map(d => ({ id: d.id, ...d.data() } as Hospital))),
+      (err) => console.warn('Firestore hospitals error:', err.code)
+    );
+
+    const unsubDoctors = onSnapshot(
+      collection(db, 'doctors'),
+      (snap) => setDoctors(snap.docs.map(d => ({ id: d.id, ...d.data() } as Doctor))),
+      (err) => console.warn('Firestore doctors error:', err.code)
+    );
+
+    return () => { unsubCases(); unsubHospitals(); unsubDoctors(); };
+  }, []);
 
   const setRole = (role: Role | null) => setCurrentRole(role);
 
-  const playAlert = useCallback((severity: Severity) => {
-    // Simulated sound alert
-    console.log(`ALARM: New ${severity} case alert!`);
-  }, []);
+  const submitCase = async (patientName: string, description: string, lat: number, lng: number): Promise<EmergencyCase> => {
+    const aiResult = await api.detectSeverity(description, lat, lng);
+    const { severity, isCardiac, survivalScore } = aiResult ?? localSeverity(description);
 
-  const createCase = useCallback((caseData: Omit<Case, 'id' | 'timestamp' | 'status'>) => {
-    const newCase: Case = {
-      ...caseData,
-      id: Math.random().toString(36).substr(2, 9),
+    const caseData = {
+      patientName,
+      description,
+      lat,
+      lng,
+      severity,
+      isCardiac,
+      survivalScore,
+      status: 'pending' as const,
+      assignedAmbulance: '',
+      assignedHospital: '',
       timestamp: Date.now(),
-      status: 'PENDING',
     };
-    setCases(prev => [newCase, ...prev]);
-    playAlert(newCase.severity);
-    
-    if (newCase.severity === 'CRITICAL') {
-      window.dispatchEvent(new CustomEvent('emergency-alert', { detail: newCase }));
-    }
-  }, [playAlert]);
 
-  const acceptCase = useCallback((caseId: string, ambulanceId: string) => {
-    setCases(prev => prev.map(c => 
-      c.id === caseId ? { ...c, status: 'ACCEPTED', ambulanceId } : c
-    ));
-  }, []);
-
-  const registerHospital = (hospital: Omit<Hospital, 'id'>) => {
-    setHospitals(prev => [...prev, { ...hospital, id: Math.random().toString(36).substr(2, 9) }]);
+    const ref = await addDoc(collection(db, 'cases'), caseData);
+    return { id: ref.id, ...caseData };
   };
 
-  const registerDoctor = (doctor: Omit<Doctor, 'id'>) => {
-    setDoctors(prev => [...prev, { ...doctor, id: Math.random().toString(36).substr(2, 9) }]);
+  const acceptCase = async (caseId: string, ambulanceId: string) => {
+    await updateDoc(doc(db, 'cases', caseId), {
+      status: 'assigned',
+      assignedAmbulance: ambulanceId,
+    });
   };
 
-  const registerVolunteer = (volunteer: Omit<Volunteer, 'id'>) => {
-    setVolunteers(prev => [...prev, { ...volunteer, id: Math.random().toString(36).substr(2, 9) }]);
+  const completeCase = async (caseId: string) => {
+    await updateDoc(doc(db, 'cases', caseId), { status: 'completed' });
   };
 
-  const updateDoctorAvailability = (doctorId: string, available: boolean) => {
-    setDoctors(prev => prev.map(d => d.id === doctorId ? { ...d, isAvailable: available } : d));
+  const registerHospital = async (data: Omit<Hospital, 'id'>) => {
+    await addDoc(collection(db, 'hospitals'), data);
+  };
+
+  const registerDoctor = async (data: Omit<Doctor, 'id'>) => {
+    await addDoc(collection(db, 'doctors'), data);
+  };
+
+  const toggleDoctorAvailability = async (doctorId: string, available: boolean) => {
+    await updateDoc(doc(db, 'doctors', doctorId), { isAvailable: available });
   };
 
   return (
     <AppContext.Provider value={{
-      cases, hospitals, doctors, volunteers, currentRole, setRole,
-      createCase, acceptCase, registerHospital, registerDoctor, registerVolunteer,
-      updateDoctorAvailability
+      cases, hospitals, doctors, currentRole, backendOnline, firestoreReady, setRole,
+      submitCase, acceptCase, completeCase,
+      registerHospital, registerDoctor, toggleDoctorAvailability,
     }}>
       {children}
     </AppContext.Provider>
@@ -87,7 +154,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 };
 
 export const useApp = () => {
-  const context = useContext(AppContext);
-  if (!context) throw new Error('useApp must be used within AppProvider');
-  return context;
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error('useApp must be used within AppProvider');
+  return ctx;
 };

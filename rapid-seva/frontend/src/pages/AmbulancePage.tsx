@@ -1,198 +1,155 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
-import { motion, AnimatePresence } from 'motion/react';
-import { Truck, MapPin, Clock, CheckCircle, Navigation, AlertCircle, ShieldAlert } from 'lucide-react';
-import { cn } from '../lib/utils';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import { motion, AnimatePresence } from 'motion/react';
+import { MapPin, Clock, ShieldAlert, CheckCircle, Navigation } from 'lucide-react';
+import { useApp } from '../context/AppContext';
+import { EmergencyCase, Severity } from '../types';
+import { cn } from '../lib/utils';
+
+const SEV_COLOR: Record<Severity, string> = {
+  low: 'bg-green-500', medium: 'bg-yellow-500', high: 'bg-orange-500', critical: 'bg-red-600',
+};
+const SEV_TEXT: Record<Severity, string> = {
+  low: 'text-green-700', medium: 'text-yellow-700', high: 'text-orange-700', critical: 'text-red-700',
+};
+const SEV_BG: Record<Severity, string> = {
+  low: 'bg-green-50', medium: 'bg-yellow-50', high: 'bg-orange-50', critical: 'bg-red-50',
+};
+
+function CaseCard({ c, onAccept, onComplete }: { c: EmergencyCase; onAccept: () => void; onComplete: () => void; key?: string }) {
+  const isNew = c.status === 'pending';
+  return (
+    <motion.div
+      layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
+      className={cn('relative p-4 rounded-2xl border transition-all', isNew ? 'bg-white border-slate-200 hover:border-slate-300' : 'bg-blue-50 border-blue-100')}
+    >
+      <div className={cn('absolute left-0 top-3 bottom-3 w-1 rounded-r-full', SEV_COLOR[c.severity])} />
+      <div className="pl-3">
+        <div className="flex justify-between items-start mb-2">
+          <span className={cn('text-[10px] font-black uppercase px-2 py-0.5 rounded', SEV_BG[c.severity], SEV_TEXT[c.severity])}>
+            {c.severity}
+          </span>
+          <span className="text-[10px] text-slate-400 font-bold">
+            {new Date(c.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </div>
+        <p className="text-sm font-black text-slate-800 mb-0.5">{c.patientName}</p>
+        <p className="text-xs text-slate-500 line-clamp-2 mb-3">{c.description}</p>
+        <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 mb-3">
+          <MapPin size={10} className="text-red-500" />
+          {c.lat.toFixed(3)}, {c.lng.toFixed(3)}
+        </div>
+        {c.status === 'pending' && (
+          <button onClick={onAccept} className="w-full py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-600 transition-colors">
+            ACCEPT DISPATCH
+          </button>
+        )}
+        {c.status === 'assigned' && (
+          <div className="flex gap-2">
+            <button className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-1">
+              <Navigation size={11} /> NAVIGATE
+            </button>
+            <button onClick={onComplete} className="py-2 px-3 bg-green-100 text-green-700 rounded-xl text-[10px] font-black uppercase flex items-center gap-1">
+              <CheckCircle size={11} /> DONE
+            </button>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
 
 export default function AmbulancePage() {
-  const { cases, acceptCase, updateCaseStatus } = useApp();
-  const [activeTab, setActiveTab] = useState<'PENDING' | 'ACCEPTED'>('PENDING');
+  const { cases, acceptCase, completeCase } = useApp();
+  const [tab, setTab] = useState<'pending' | 'assigned'>('pending');
 
-  const pendingCases = cases.filter(c => c.status === 'PENDING');
-  const acceptedCases = cases.filter(c => c.status === 'ACCEPTED');
-
-  const handleAccept = (caseId: string) => {
-    acceptCase(caseId, 'AMB-001');
-    setActiveTab('ACCEPTED');
-  };
+  const pending = cases.filter(c => c.status === 'pending');
+  const assigned = cases.filter(c => c.status === 'assigned');
+  const active = cases.filter(c => c.status !== 'completed');
 
   return (
-    <div className="flex h-full gap-4 overflow-hidden">
-      {/* List Sidebar */}
-      <aside className="w-96 flex flex-col gap-4">
-        <div className="card-base flex flex-col h-full overflow-hidden">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="font-bold text-slate-800 uppercase tracking-tight">MISSION CONTROL</h2>
-            <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-              <button 
-                onClick={() => setActiveTab('PENDING')}
-                className={cn(
-                  "px-3 py-1 rounded-md text-[10px] font-black transition-all",
-                  activeTab === 'PENDING' ? "bg-white shadow-sm text-red-600" : "text-slate-500"
-                )}
-              >
-                PENDING ({pendingCases.length})
-              </button>
-              <button 
-                onClick={() => setActiveTab('ACCEPTED')}
-                className={cn(
-                  "px-3 py-1 rounded-md text-[10px] font-black transition-all",
-                  activeTab === 'ACCEPTED' ? "bg-white shadow-sm text-blue-600" : "text-slate-500"
-                )}
-              >
-                ACTIVE ({acceptedCases.length})
-              </button>
+    <div className="flex h-full gap-3 overflow-hidden">
+      <aside className="w-88 flex flex-col gap-3 shrink-0" style={{ width: '22rem' }}>
+        <div className="card-base flex flex-col flex-1 overflow-hidden min-h-0">
+          <div className="flex justify-between items-center mb-4 shrink-0">
+            <h2 className="font-black text-slate-800 text-sm uppercase">Mission Control</h2>
+            <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+              {(['pending', 'assigned'] as const).map(t => (
+                <button key={t} onClick={() => setTab(t)}
+                  className={cn('px-3 py-1 rounded-md text-[10px] font-black transition-all',
+                    tab === t ? 'bg-white shadow-sm text-red-600' : 'text-slate-500')}>
+                  {t.toUpperCase()} ({t === 'pending' ? pending.length : assigned.length})
+                </button>
+              ))}
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+          <div className="flex-1 overflow-y-auto space-y-3 pr-1">
             <AnimatePresence mode="popLayout">
-              {(activeTab === 'PENDING' ? pendingCases : acceptedCases).map(c => (
-                <motion.div
+              {(tab === 'pending' ? pending : assigned).map(c => (
+                <CaseCard
                   key={c.id}
-                  layout
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="group relative p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-slate-300 transition-all cursor-pointer"
-                >
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className={cn(
-                        "w-2 h-10 rounded-full absolute left-0 top-1/2 -translate-y-1/2",
-                        c.severity === 'CRITICAL' ? "bg-red-600" : "bg-orange-500"
-                      )}></div>
-                      <span className="text-[10px] font-black text-slate-800 uppercase tracking-widest pl-2">{c.severity}</span>
-                    </div>
-                    <span className="text-[10px] font-bold text-slate-400">
-                      {new Date(c.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  
-                  <h3 className="text-sm font-black text-slate-800 mb-1">{c.patientName}</h3>
-                  <p className="text-xs text-slate-500 leading-tight mb-4 line-clamp-2">{c.description}</p>
-                  
-                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase mb-4">
-                    <MapPin size={10} className="text-red-500" />
-                    Sector 4 • 2.4km
-                  </div>
-
-                  {c.status === 'PENDING' && (
-                    <button 
-                      onClick={() => handleAccept(c.id)}
-                      className="w-full py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-600 transition-colors shadow-lg shadow-slate-200 group-hover:scale-[1.02]"
-                    >
-                      ACCEPT DISPATCH
-                    </button>
-                  )}
-
-                  {c.status === 'ACCEPTED' && (
-                    <div className="flex gap-2">
-                      <button className="flex-1 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-100">NAVIGATE</button>
-                      <button 
-                        onClick={() => updateCaseStatus(c.id, 'COMPLETED')}
-                        className="py-2 px-3 bg-green-100 text-green-700 rounded-xl text-[10px] font-black uppercase"
-                      >
-                         DONE
-                      </button>
-                    </div>
-                  )}
-                </motion.div>
+                  c={c}
+                  onAccept={() => acceptCase(c.id, 'AMB-001')}
+                  onComplete={() => completeCase(c.id)}
+                />
               ))}
             </AnimatePresence>
-
-            {(activeTab === 'PENDING' ? pendingCases : acceptedCases).length === 0 && (
-              <div className="flex flex-col items-center justify-center p-12 text-center opacity-30">
-                <ShieldAlert size={48} className="mb-4" />
-                <p className="text-xs font-black uppercase tracking-[0.2em]">No Active Dispatches</p>
+            {(tab === 'pending' ? pending : assigned).length === 0 && (
+              <div className="flex flex-col items-center justify-center py-12 opacity-30">
+                <ShieldAlert size={40} className="mb-3" />
+                <p className="text-xs font-black uppercase tracking-widest">No Active Dispatches</p>
               </div>
             )}
           </div>
         </div>
       </aside>
 
-      {/* Main Map */}
-      <div className="flex-1 flex flex-col gap-4">
-        <div className="flex-1 card-base overflow-hidden relative p-0 bg-slate-200 border border-slate-200">
-           <MapContainer 
-            center={[18.5204, 73.8567]} 
-            zoom={13} 
-            style={{ height: '100%', width: '100%' }}
-            className="z-0"
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            
-            {cases.filter(c => c.status !== 'COMPLETED').map(c => (
-              <Marker 
-                key={c.id} 
-                position={[c.location.lat, c.location.lng]}
-                icon={L.icon({ 
-                  iconUrl: c.severity === 'CRITICAL' ? 'https://cdn-icons-png.flaticon.com/512/564/564619.png' : 'https://cdn-icons-png.flaticon.com/512/1033/1033010.png', 
-                  iconSize: [32, 32] 
-                })}
-              >
+      <div className="flex-1 flex flex-col gap-3 min-w-0">
+        <div className="flex-1 rounded-2xl overflow-hidden border border-slate-200 shadow-sm relative">
+          <MapContainer center={[18.5204, 73.8567]} zoom={12} style={{ height: '100%', width: '100%' }}>
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            {active.map(c => (
+              <Marker key={c.id} position={[c.lat, c.lng]}
+                icon={L.icon({
+                  iconUrl: c.severity === 'critical'
+                    ? 'https://cdn-icons-png.flaticon.com/512/564/564619.png'
+                    : 'https://cdn-icons-png.flaticon.com/512/1033/1033010.png',
+                  iconSize: [32, 32],
+                })}>
                 <Popup>
                   <div className="p-1">
                     <p className="font-bold text-xs">{c.patientName}</p>
-                    <p className="text-[10px] opacity-70">{c.severity} Emergency</p>
+                    <p className="text-[10px] opacity-70 capitalize">{c.severity} • {c.status}</p>
                   </div>
                 </Popup>
               </Marker>
             ))}
           </MapContainer>
-
-          <div className="absolute bottom-6 left-6 z-10 flex gap-3">
-             <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-slate-200">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Unit Status</p>
-                <div className="flex items-center gap-3">
-                   <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse shadow-sm shadow-green-200"></div>
-                   <p className="text-sm font-black text-slate-800">AMB-702 ACTIVE</p>
-                </div>
-             </div>
-             <div className="bg-slate-900/90 backdrop-blur-md p-4 rounded-2xl shadow-2xl border border-slate-700 text-white">
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Session</p>
-                <p className="text-sm font-black text-red-500">RES-OFF</p>
-             </div>
+          <div className="absolute bottom-4 left-4 z-10 flex gap-2">
+            <div className="bg-white/90 backdrop-blur-sm px-3 py-2 rounded-xl shadow border border-slate-200">
+              <p className="text-[9px] font-black text-slate-400 uppercase">Unit Status</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                <p className="text-xs font-black text-slate-800">AMB-001 ACTIVE</p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="h-20 bg-white rounded-2xl flex items-center px-10 gap-10 shadow-sm border border-slate-200 overflow-hidden">
-          <div className="flex items-center gap-4">
-             <div className="p-2.5 bg-slate-100 rounded-xl text-slate-400">
-                <Clock className="w-5 h-5" />
-             </div>
-             <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase">Avg Response</p>
-                <p className="text-sm font-black text-slate-800">7.2 MINS</p>
-             </div>
-          </div>
-          <div className="w-[1px] h-8 bg-slate-100"></div>
-          <div className="flex items-center gap-4">
-             <div className="p-2.5 bg-slate-100 rounded-xl text-slate-400">
-                <MapPin className="w-5 h-5" />
-             </div>
-             <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase">Zone Score</p>
-                <p className="text-sm font-black text-slate-800">ALPHA-9</p>
-             </div>
-          </div>
-          <div className="w-[1px] h-8 bg-slate-100"></div>
-          <div className="flex-1 flex justify-end">
-             <div className="flex -space-x-2">
-                {[1,2,3,4].map(i => (
-                  <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-slate-200 overflow-hidden shadow-sm">
-                    <img src={`https://i.pravatar.cc/100?img=${i+10}`} alt="avatar" />
-                  </div>
-                ))}
-                <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-900 flex items-center justify-center text-[10px] font-bold text-white shadow-sm">+8</div>
-             </div>
-          </div>
+        <div className="h-16 bg-white rounded-2xl flex items-center px-6 gap-8 border border-slate-200 shadow-sm shrink-0">
+          {[
+            { label: 'Pending', value: pending.length, color: 'text-red-600' },
+            { label: 'Assigned', value: assigned.length, color: 'text-blue-600' },
+            { label: 'Avg Response', value: '7.2 min', color: 'text-slate-800' },
+          ].map(({ label, value, color }) => (
+            <div key={label}>
+              <p className="text-[9px] font-black text-slate-400 uppercase">{label}</p>
+              <p className={cn('text-sm font-black', color)}>{value}</p>
+            </div>
+          ))}
         </div>
       </div>
     </div>
