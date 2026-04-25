@@ -1,120 +1,152 @@
-import React, { createContext, useContext, useState } from 'react';
-import { Case, Hospital, Doctor, Volunteer, Role } from '../types';
-
-const API = 'http://localhost:8000';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import {
+  collection, addDoc, updateDoc, doc, onSnapshot,
+  query, orderBy, getDoc
+} from 'firebase/firestore';
+import { db } from '../firebase';
+import { EmergencyCase, Hospital, Doctor, Role, Severity } from '../types';
+import { api } from '../api';
 
 interface AppContextType {
-  cases: Case[];
+  cases: EmergencyCase[];
   hospitals: Hospital[];
   doctors: Doctor[];
   currentRole: Role | null;
+  backendOnline: boolean;
+  firestoreReady: boolean;
   setRole: (role: Role | null) => void;
-  createCase: (caseData: { patientName: string; description: string; location: { lat: number; lng: number } }) => Promise<Case>;
+  submitCase: (patientName: string, description: string, lat: number, lng: number) => Promise<EmergencyCase>;
   acceptCase: (caseId: string, ambulanceId: string) => Promise<void>;
-  updateCaseStatus: (caseId: string, status: Case['status']) => Promise<void>;
-  registerHospital: (hospital: Omit<Hospital, 'id'>) => Promise<void>;
-  registerDoctor: (doctor: Omit<Doctor, 'id'>) => Promise<void>;
-  updateDoctorAvailability: (doctorId: string, available: boolean) => Promise<void>;
-  fetchCases: () => Promise<void>;
-  fetchHospitals: () => Promise<void>;
-  fetchDoctors: () => Promise<void>;
+  completeCase: (caseId: string) => Promise<void>;
+  registerHospital: (data: Omit<Hospital, 'id'>) => Promise<void>;
+  registerDoctor: (data: Omit<Doctor, 'id'>) => Promise<void>;
+  toggleDoctorAvailability: (doctorId: string, available: boolean) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+function localSeverity(desc: string): { severity: Severity; isCardiac: boolean; survivalScore: number } {
+  const d = desc.toLowerCase();
+  const critical = ['heart attack', 'unconscious', 'not breathing', 'stroke', 'accident', 'cardiac', 'no pulse'];
+  const high = ['bleeding', 'fracture', 'burn', 'chest pain', 'seizure', 'broken'];
+  const medium = ['pain', 'fever', 'vomit', 'dizzy', 'breathe', 'faint', 'weak'];
+  if (critical.some(k => d.includes(k))) return { severity: 'critical', isCardiac: d.includes('heart') || d.includes('cardiac') || d.includes('chest'), survivalScore: 42 };
+  if (high.some(k => d.includes(k))) return { severity: 'high', isCardiac: false, survivalScore: 60 };
+  if (medium.some(k => d.includes(k))) return { severity: 'medium', isCardiac: false, survivalScore: 75 };
+  return { severity: 'low', isCardiac: false, survivalScore: 90 };
+}
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [cases, setCases] = useState<Case[]>([]);
+  const [cases, setCases] = useState<EmergencyCase[]>([]);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [currentRole, setCurrentRole] = useState<Role | null>(null);
+  const [backendOnline, setBackendOnline] = useState(false);
+  const [firestoreReady, setFirestoreReady] = useState(false);
+  const alertedIds = useRef<Set<string>>(new Set());
+
+  // Check Flask backend health
+  useEffect(() => {
+    fetch('http://localhost:5000/health')
+      .then(() => setBackendOnline(true))
+      .catch(() => setBackendOnline(false));
+  }, []);
+
+  // Real-time Firestore listeners — with error handling for permission-denied
+  useEffect(() => {
+    const unsubCases = onSnapshot(
+      query(collection(db, 'cases'), orderBy('timestamp', 'desc')),
+      (snap) => {
+        setFirestoreReady(true);
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as EmergencyCase));
+        setCases(data);
+        data.forEach(c => {
+          if (c.severity === 'critical' && c.status === 'pending' && !alertedIds.current.has(c.id)) {
+            alertedIds.current.add(c.id);
+            window.dispatchEvent(new CustomEvent('emergency-alert', { detail: c }));
+          }
+        });
+      },
+      (err) => {
+        console.warn('Firestore cases listener error:', err.code);
+        if (err.code === 'permission-denied') {
+          console.error(
+            '%c⚠ Firestore Permission Denied\n' +
+            'Go to Firebase Console → Firestore → Rules and set:\n\n' +
+            'rules_version = \'2\';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}',
+            'color: red; font-size: 14px;'
+          );
+        }
+      }
+    );
+
+    const unsubHospitals = onSnapshot(
+      collection(db, 'hospitals'),
+      (snap) => setHospitals(snap.docs.map(d => ({ id: d.id, ...d.data() } as Hospital))),
+      (err) => console.warn('Firestore hospitals error:', err.code)
+    );
+
+    const unsubDoctors = onSnapshot(
+      collection(db, 'doctors'),
+      (snap) => setDoctors(snap.docs.map(d => ({ id: d.id, ...d.data() } as Doctor))),
+      (err) => console.warn('Firestore doctors error:', err.code)
+    );
+
+    return () => { unsubCases(); unsubHospitals(); unsubDoctors(); };
+  }, []);
 
   const setRole = (role: Role | null) => setCurrentRole(role);
 
-  const fetchCases = async () => {
-    const res = await fetch(`${API}/api/cases`);
-    const data = await res.json();
-    setCases(data);
-  };
+  const submitCase = async (patientName: string, description: string, lat: number, lng: number): Promise<EmergencyCase> => {
+    const aiResult = await api.detectSeverity(description, lat, lng);
+    const { severity, isCardiac, survivalScore } = aiResult ?? localSeverity(description);
 
-  const fetchHospitals = async () => {
-    const res = await fetch(`${API}/api/hospitals`);
-    const data = await res.json();
-    setHospitals(data);
-  };
+    const caseData = {
+      patientName,
+      description,
+      lat,
+      lng,
+      severity,
+      isCardiac,
+      survivalScore,
+      status: 'pending' as const,
+      assignedAmbulance: '',
+      assignedHospital: '',
+      timestamp: Date.now(),
+    };
 
-  const fetchDoctors = async () => {
-    const res = await fetch(`${API}/api/doctors`);
-    const data = await res.json();
-    setDoctors(data);
-  };
-
-  const createCase = async (caseData: { patientName: string; description: string; location: { lat: number; lng: number } }) => {
-    const res = await fetch(`${API}/api/cases`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(caseData),
-    });
-    const newCase: Case = await res.json();
-    setCases(prev => [newCase, ...prev]);
-    if (newCase.severity === 'CRITICAL') {
-      window.dispatchEvent(new CustomEvent('emergency-alert', { detail: newCase }));
-    }
-    return newCase;
+    const ref = await addDoc(collection(db, 'cases'), caseData);
+    return { id: ref.id, ...caseData };
   };
 
   const acceptCase = async (caseId: string, ambulanceId: string) => {
-    await fetch(`${API}/api/cases/${caseId}/accept`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ambulanceId }),
+    await updateDoc(doc(db, 'cases', caseId), {
+      status: 'assigned',
+      assignedAmbulance: ambulanceId,
     });
-    setCases(prev => prev.map(c => c.id === caseId ? { ...c, status: 'ACCEPTED', ambulanceId } : c));
   };
 
-  const updateCaseStatus = async (caseId: string, status: Case['status']) => {
-    await fetch(`${API}/api/cases/${caseId}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-    setCases(prev => prev.map(c => c.id === caseId ? { ...c, status } : c));
+  const completeCase = async (caseId: string) => {
+    await updateDoc(doc(db, 'cases', caseId), { status: 'completed' });
   };
 
-  const registerHospital = async (hospital: Omit<Hospital, 'id'>) => {
-    const res = await fetch(`${API}/api/hospitals`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(hospital),
-    });
-    const newHospital: Hospital = await res.json();
-    setHospitals(prev => [...prev, newHospital]);
+  const registerHospital = async (data: Omit<Hospital, 'id'>) => {
+    await addDoc(collection(db, 'hospitals'), data);
   };
 
-  const registerDoctor = async (doctor: Omit<Doctor, 'id'>) => {
-    const res = await fetch(`${API}/api/doctors`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(doctor),
-    });
-    const newDoctor: Doctor = await res.json();
-    setDoctors(prev => [...prev, newDoctor]);
+  const registerDoctor = async (data: Omit<Doctor, 'id'>) => {
+    await addDoc(collection(db, 'doctors'), data);
   };
 
-  const updateDoctorAvailability = async (doctorId: string, available: boolean) => {
-    await fetch(`${API}/api/doctors/${doctorId}/availability`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ available }),
-    });
-    setDoctors(prev => prev.map(d => d.id === doctorId ? { ...d, isAvailable: available } : d));
+  const toggleDoctorAvailability = async (doctorId: string, available: boolean) => {
+    await updateDoc(doc(db, 'doctors', doctorId), { isAvailable: available });
   };
 
   return (
     <AppContext.Provider value={{
-      cases, hospitals, doctors, currentRole, setRole,
-      createCase, acceptCase, updateCaseStatus,
-      registerHospital, registerDoctor, updateDoctorAvailability,
-      fetchCases, fetchHospitals, fetchDoctors,
+      cases, hospitals, doctors, currentRole, backendOnline, firestoreReady, setRole,
+      submitCase, acceptCase, completeCase,
+      registerHospital, registerDoctor, toggleDoctorAvailability,
     }}>
       {children}
     </AppContext.Provider>
@@ -122,7 +154,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 };
 
 export const useApp = () => {
-  const context = useContext(AppContext);
-  if (!context) throw new Error('useApp must be used within AppProvider');
-  return context;
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error('useApp must be used within AppProvider');
+  return ctx;
 };

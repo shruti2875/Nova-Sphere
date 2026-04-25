@@ -1,27 +1,32 @@
-export type Severity = 'LOW' | 'MEDIUM' | 'CRITICAL';
+export type Severity = 'low' | 'medium' | 'high' | 'critical';
+export type CaseStatus = 'pending' | 'assigned' | 'active' | 'completed';
+export type Role = 'PATIENT' | 'AMBULANCE' | 'HOSPITAL' | 'DOCTOR';
 
-export interface Location {
+export interface GeoLocation {
   lat: number;
   lng: number;
 }
 
-export interface Case {
+export interface EmergencyCase {
   id: string;
   patientName: string;
   description: string;
   severity: Severity;
-  location: Location;
+  isCardiac: boolean;
+  lat: number;
+  lng: number;
+  status: CaseStatus;
+  assignedAmbulance?: string;
+  assignedHospital?: string;
+  survivalScore: number;
   timestamp: number;
-  status: 'PENDING' | 'ACCEPTED' | 'ACTIVE' | 'COMPLETED';
-  ambulanceId?: string;
-  hospitalId?: string;
-  survivalScore?: number;
 }
 
 export interface Hospital {
   id: string;
   name: string;
-  location: Location;
+  lat: number;
+  lng: number;
   hasICU: boolean;
   availableBeds: number;
   totalBeds: number;
@@ -31,15 +36,22 @@ export interface Doctor {
   id: string;
   name: string;
   specialization: string;
-  location: Location;
+  lat: number;
+  lng: number;
   isAvailable: boolean;
+  phone?: string;
 }
 
-export interface Volunteer {
+export interface NearbyUser {
   id: string;
   name: string;
-  location: Location;
-  helping: boolean;
+  lat: number;
+  lng: number;
+  isHelper: boolean;
 }
 
-export type Role = 'PATIENT' | 'AMBULANCE' | 'HOSPITAL' | 'DOCTOR';
+export interface ScoreResult {
+  score: number;
+  severity: Severity;
+  isCardiac: boolean;
+}
