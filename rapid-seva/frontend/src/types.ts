@@ -20,6 +20,9 @@ export interface EmergencyCase {
   assignedHospital?: string;
   survivalScore: number;
   timestamp: number;
+  // live tracking
+  ambLat?: number;
+  ambLng?: number;
 }
 
 export interface Hospital {

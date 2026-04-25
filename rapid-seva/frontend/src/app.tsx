@@ -11,8 +11,6 @@ import PatientPage from './pages/PatientPage';
 import AmbulancePage from './pages/AmbulancePage';
 import HospitalPage from './pages/HospitalPage';
 import DoctorPage from './pages/DoctorPage';
-import ConsultPage from './pages/ConsultPage';
-import DoctorConsultPage from './pages/DoctorConsultPage';
 import AIPanel from './components/AIPanel';
 
 function CriticalAlertBanner({ alert, onDismiss }: { alert: EmergencyCase; onDismiss: () => void }) {
@@ -120,12 +118,9 @@ function Layout({ children }: { children: React.ReactNode }) {
     { role: 'AMBULANCE' as const,       path: '/ambulance',      label: 'AMBULANCE' },
     { role: 'HOSPITAL' as const,        path: '/hospital',       label: 'HOSPITAL' },
     { role: 'DOCTOR' as const,          path: '/doctor',         label: 'DOCTOR' },
-    { role: 'CONSULT' as const,         path: '/consult',        label: 'TELECONSULT' },
-    { role: 'DOCTOR_CONSULT' as const,  path: '/doctor-consult', label: 'DR. INBOX' },
   ];
 
   const pendingCount = cases.filter(c => c.status === 'pending').length;
-  const pendingConsults = consultRequests.filter(r => r.status === 'pending').length;
 
   return (
     <div className="h-screen bg-slate-100 flex flex-col font-sans text-slate-900 overflow-hidden">
@@ -179,12 +174,6 @@ function Layout({ children }: { children: React.ReactNode }) {
               {role === 'AMBULANCE' && pendingCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 text-white text-[8px] font-black rounded-full flex items-center justify-center">
                   {pendingCount}
-                </span>
-              )}
-              {/* Live badge on DR. INBOX when pending consults exist */}
-              {role === 'DOCTOR_CONSULT' && pendingConsults > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-indigo-600 text-white text-[8px] font-black rounded-full flex items-center justify-center">
-                  {pendingConsults}
                 </span>
               )}
             </Link>
@@ -288,8 +277,6 @@ export default function App() {
             <Route path="/ambulance" element={<AmbulancePage />} />
             <Route path="/hospital" element={<HospitalPage />} />
             <Route path="/doctor" element={<DoctorPage />} />
-            <Route path="/consult" element={<ConsultPage />} />
-            <Route path="/doctor-consult" element={<DoctorConsultPage />} />
           </Routes>
         </Layout>
       </Router>

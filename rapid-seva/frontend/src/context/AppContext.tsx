@@ -22,6 +22,7 @@ interface AppContextType {
   registerHospital: (data: Omit<Hospital, 'id'>) => Promise<void>;
   registerDoctor: (data: Omit<Doctor, 'id'>) => Promise<void>;
   toggleDoctorAvailability: (doctorId: string, available: boolean) => Promise<void>;
+  updateAmbulanceLocation: (caseId: string, ambLat: number, ambLng: number) => Promise<void>;
   // Teleconsultation
   sendConsultRequest: (data: Omit<ConsultRequest, 'id'>) => Promise<string>;
   respondToConsult: (consultId: string, status: 'accepted' | 'rejected') => Promise<void>;
@@ -155,6 +156,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await updateDoc(doc(db, 'doctors', doctorId), { isAvailable: available });
   };
 
+  const updateAmbulanceLocation = async (caseId: string, ambLat: number, ambLng: number) => {
+    await updateDoc(doc(db, 'cases', caseId), { ambLat, ambLng });
+  };
+
   // Teleconsultation methods
   const sendConsultRequest = async (data: Omit<ConsultRequest, 'id'>): Promise<string> => {
     const ref = await addDoc(collection(db, 'consultRequests'), data);
@@ -185,7 +190,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     <AppContext.Provider value={{
       cases, hospitals, doctors, consultRequests, currentRole, backendOnline, firestoreReady, setRole,
       submitCase, acceptCase, completeCase,
-      registerHospital, registerDoctor, toggleDoctorAvailability,
+      registerHospital, registerDoctor, toggleDoctorAvailability, updateAmbulanceLocation,
       sendConsultRequest, respondToConsult, sendChatMessage, getChatMessages,
     }}>
       {children}

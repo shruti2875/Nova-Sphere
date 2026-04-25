@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send } from 'lucide-react';
+import { Send, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { ChatMessage } from '../types';
 import { cn } from '../lib/utils';
@@ -7,9 +7,10 @@ import { cn } from '../lib/utils';
 interface Props {
   consultId: string;
   sender: 'patient' | 'doctor';
+  onClose: () => void;
 }
 
-export default function ConsultChat({ consultId, sender }: Props) {
+export default function ConsultChat({ consultId, sender, onClose }: Props) {
   const { sendChatMessage, getChatMessages } = useApp();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState('');
@@ -33,6 +34,12 @@ export default function ConsultChat({ consultId, sender }: Props) {
 
   return (
     <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between p-3 border-b border-slate-100 bg-slate-50">
+        <h3 className="text-sm font-black text-slate-800 uppercase">Chat Consultation</h3>
+        <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
+          <X size={16} className="text-slate-500" />
+        </button>
+      </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         {messages.length === 0 && (
           <p className="text-center text-[10px] text-slate-400 font-bold uppercase py-6">

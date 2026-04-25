@@ -3,10 +3,11 @@ import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-lea
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { motion, AnimatePresence } from 'motion/react';
-import { MapPin, Send, Bot, Heart, CheckCircle, Truck, Clock, Sparkles } from 'lucide-react';
+import { MapPin, Send, Bot, Heart, Truck, Clock, Sparkles, Stethoscope, MessageSquare, Phone, Building2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { EmergencyCase, Severity } from '../types';
+import { EmergencyCase, Severity, Doctor, Hospital, ConsultRequest } from '../types';
 import { cn } from '../lib/utils';
+import ConsultChat from '../components/ConsultChat';
 
 L.Marker.prototype.options.icon = L.icon({
   iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
@@ -29,6 +30,57 @@ const STATUS_LABEL: Record<string, string> = {
   completed: '✅ Case resolved',
 };
 
+// Keyword → specialization matching for teleconsult
+const SPEC_KEYWORDS: Record<string, string[]> = {
+  'Cardiologist':        ['heart', 'chest pain', 'cardiac', 'palpitation', 'blood pressure'],
+  'Neurologist':         ['headache', 'migraine', 'stroke', 'seizure', 'numbness', 'dizziness'],
+  'Orthopedic':          ['fracture', 'bone', 'joint', 'knee', 'back pain', 'sprain'],
+  'Pediatrician':        ['child', 'baby', 'infant', 'fever child', 'kid'],
+  'Dermatologist':       ['rash', 'skin', 'allergy', 'itch', 'burn'],
+  'General Physician':   ['fever', 'cold', 'cough', 'fatigue', 'weakness', 'vomit'],
+  'Gynecologist':        ['pregnancy', 'period', 'menstrual', 'ovary', 'uterus'],
+  'Pulmonologist':       ['breathing', 'asthma', 'lung', 'cough blood', 'shortness'],
+};
+
+const HOSP_SPEC_KEYWORDS: Record<string, string[]> = {
+  'Cardiac & Trauma':        ['heart', 'cardiac', 'chest', 'trauma', 'accident'],
+  'Neurology & Stroke':      ['stroke', 'seizure', 'brain', 'neuro', 'headache'],
+  'Burns & Plastic Surgery': ['burn', 'fire', 'skin graft'],
+  'Pediatric Emergency':     ['child', 'baby', 'infant', 'kid'],
+  'Orthopedic & Fractures':  ['fracture', 'bone', 'joint', 'sprain'],
+  'Maternity & Obstetrics':  ['pregnancy', 'labor', 'delivery', 'maternity'],
+  'General Emergency':       [],
+  'Multi-Specialty':         [],
+};
+
+function matchDoctors(problem: string, doctors: Doctor[]): { doctor: Doctor; keywords: string[] }[] {
+  const p = problem.toLowerCase();
+  const scored = doctors
+    .filter(d => d.isAvailable)
+    .map(d => {
+      const specKeys = SPEC_KEYWORDS[d.specialization] ?? [];
+      const matched = specKeys.filter(k => p.includes(k));
+      const score = matched.length || (d.specialization === 'General Physician' ? 0.5 : 0);
+      return { doctor: d, keywords: matched, score };
+    })
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+  return scored.slice(0, 3).map(({ doctor, keywords }) => ({ doctor, keywords }));
+}
+
+function matchHospitals(problem: string, hospitals: Hospital[]): Hospital[] {
+  const p = problem.toLowerCase();
+  return hospitals
+    .map(h => {
+      const keys = HOSP_SPEC_KEYWORDS[h.specialization] ?? [];
+      const score = keys.filter(k => p.includes(k)).length + (h.hasICU ? 0.5 : 0);
+      return { h, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map(x => x.h);
+}
+
 function MapClicker({ onPick }: { onPick: (lat: number, lng: number) => void }) {
   useMapEvents({ click: e => onPick(e.latlng.lat, e.latlng.lng) });
   return null;
@@ -40,7 +92,7 @@ function MapFly({ lat, lng }: { lat: number; lng: number }) {
 }
 
 export default function PatientPage() {
-  const { submitCase, hospitals, doctors, cases, firestoreReady } = useApp();
+  const { submitCase, hospitals, doctors, cases, firestoreReady, consultRequests, sendConsultRequest } = useApp();
   const [lat, setLat] = useState(18.5204);
   const [lng, setLng] = useState(73.8567);
   const [name, setName] = useState('');
@@ -48,6 +100,19 @@ export default function PatientPage() {
   const [loading, setLoading] = useState(false);
   const [submittedId, setSubmittedId] = useState<string | null>(null);
   const [eta, setEta] = useState(600);
+
+  // Teleconsultation state
+  const [consultProblem, setConsultProblem] = useState('');
+  const [consultName, setConsultName] = useState('');
+  const [matchedDoctors, setMatchedDoctors] = useState<{ doctor: Doctor; keywords: string[] }[]>([]);
+  const [matchedHospitals, setMatchedHospitals] = useState<Hospital[]>([]);
+  const [consultAnalyzed, setConsultAnalyzed] = useState(false);
+  const [sendingConsult, setSendingConsult] = useState<string | null>(null);
+  const [activeChat, setActiveChat] = useState<string | null>(null);
+
+  // My sent consult requests
+  const myConsultRequests = consultRequests.filter(r => r.patientName === consultName && consultName.trim() !== '');
+  const acceptedConsult = myConsultRequests.find(r => r.status === 'accepted');
 
   // Live case — always reads from Firestore snapshot, no manual refresh needed
   const liveCase = submittedId ? cases.find(c => c.id === submittedId) ?? null : null;
@@ -78,6 +143,37 @@ export default function PatientPage() {
       setLoading(false);
     }
   };
+
+  // Teleconsult handlers
+  const handleConsultAnalyze = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!consultProblem.trim() || !consultName.trim()) return;
+    setMatchedDoctors(matchDoctors(consultProblem, doctors));
+    setMatchedHospitals(matchHospitals(consultProblem, hospitals));
+    setConsultAnalyzed(true);
+  };
+
+  const handleSendConsultRequest = async (doctor: Doctor, keywords: string[]) => {
+    setSendingConsult(doctor.id);
+    try {
+      await sendConsultRequest({
+        patientName: consultName.trim(),
+        problem: consultProblem.trim(),
+        matchedKeywords: keywords,
+        targetDoctorId: doctor.id,
+        targetDoctorName: doctor.name,
+        status: 'pending',
+        timestamp: Date.now(),
+        patientLat: lat,
+        patientLng: lng,
+      });
+    } finally {
+      setSendingConsult(null);
+    }
+  };
+
+  const getRequestForDoctor = (doctorId: string) =>
+    myConsultRequests.find(r => r.targetDoctorId === doctorId) ?? null;
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   const dist = (la: number, lo: number) => Math.sqrt((lat - la) ** 2 + (lng - lo) ** 2) * 111;
@@ -213,7 +309,7 @@ export default function PatientPage() {
 
         {/* Nearby Doctors — live from Firestore */}
         <div className="card-base flex-1 overflow-hidden flex flex-col min-h-0">
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center justify-between gap-2 mb-3">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nearby Doctors</h3>
             <span className="text-[9px] font-black text-green-600 bg-green-100 px-1.5 py-0.5 rounded">
               {doctors.filter(d => d.isAvailable).length} available
@@ -231,6 +327,159 @@ export default function PatientPage() {
                   <p className="text-[9px] text-slate-400 uppercase font-bold">{d.specialization} • {dist(d.lat, d.lng).toFixed(1)}km</p>
                 </div>
                 <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Teleconsult Panel — always visible */}
+        <div className="card-base">
+          <div className="flex items-center gap-2 mb-3">
+            <Stethoscope size={12} className="text-indigo-600" />
+            <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Teleconsult</h3>
+          </div>
+          {!consultAnalyzed ? (
+            <form onSubmit={handleConsultAnalyze} className="space-y-2">
+              <input
+                value={consultName}
+                onChange={e => { setConsultName(e.target.value); setConsultAnalyzed(false); }}
+                placeholder="Your name"
+                className="input-base w-full text-xs"
+              />
+              <textarea
+                value={consultProblem}
+                onChange={e => { setConsultProblem(e.target.value); setConsultAnalyzed(false); }}
+                placeholder="Describe your problem..."
+                className="input-base w-full h-16 resize-none text-xs"
+              />
+              <button type="submit" className="btn-primary w-full text-xs flex items-center justify-center gap-1">
+                <Sparkles size={12} /> Find Doctors
+              </button>
+            </form>
+          ) : (
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              <p className="text-[9px] font-bold text-slate-400 uppercase">Matched Doctors</p>
+              {matchedDoctors.length === 0 && (
+                <p className="text-xs text-slate-400 text-center py-2">No matching doctors</p>
+              )}
+              {matchedDoctors.map(({ doctor, keywords }) => {
+                const req = getRequestForDoctor(doctor.id);
+                return (
+                  <div key={doctor.id} className="p-2 bg-indigo-50 rounded-lg border border-indigo-100">
+                    <div className="flex justify-between items-start">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black text-indigo-800 truncate">{doctor.name}</p>
+                        <p className="text-[8px] font-bold text-indigo-600 uppercase">{doctor.specialization}</p>
+                      </div>
+                      {!req ? (
+                        <button
+                          onClick={() => handleSendConsultRequest(doctor, keywords)}
+                          disabled={sendingConsult === doctor.id}
+                          className="px-2 py-1 bg-indigo-600 text-white rounded text-[8px] font-black uppercase shrink-0 disabled:opacity-50"
+                        >
+                          {sendingConsult === doctor.id ? '...' : 'Request'}
+                        </button>
+                      ) : req.status === 'pending' ? (
+                        <span className="text-[8px] font-black text-amber-600">Pending...</span>
+                      ) : req.status === 'accepted' ? (
+                        <button
+                          onClick={() => setActiveChat(req.id)}
+                          className="px-2 py-1 bg-green-600 text-white rounded text-[8px] font-black uppercase flex items-center gap-1"
+                        >
+                          <MessageSquare size={8} /> Chat
+                        </button>
+                      ) : (
+                        <span className="text-[8px] font-black text-red-600">Declined</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              <button
+                onClick={() => setConsultAnalyzed(false)}
+                className="text-[8px] font-bold text-slate-400 uppercase hover:text-slate-600"
+              >
+                ← Change problem
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Nearby Hospitals List */}
+        <div className="card-base flex-1 overflow-hidden flex flex-col min-h-0">
+          <div className="flex items-center gap-2 mb-3">
+            <Building2 size={12} className="text-red-500" />
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hospitals</h3>
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-2">
+            {hospitals.length === 0 && (
+              <p className="text-xs text-slate-400 text-center py-4">No hospitals registered</p>
+            )}
+            {hospitals.slice(0, 5).map(h => (
+              <div key={h.id} className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="flex justify-between items-start">
+                  <p className="text-xs font-bold text-slate-800 truncate flex-1">{h.name}</p>
+                  {h.hasICU && (
+                    <span className="text-[8px] font-black text-red-600 bg-red-50 px-1.5 py-0.5 rounded ml-1 shrink-0">ICU</span>
+                  )}
+                </div>
+                <p className="text-[9px] text-slate-400 uppercase font-bold">{h.specialization}</p>
+                <div className="flex items-center justify-between mt-1.5">
+                  <span className="text-[8px] font-bold text-slate-500">
+                    {h.availableBeds} beds • {dist(h.lat, h.lng).toFixed(1)}km
+                  </span>
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${h.lat},${h.lng}`}
+                    target="_blank" rel="noreferrer"
+                    className="flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-[8px] font-black uppercase hover:bg-green-700"
+                  >
+                    <Phone size={8} /> Contact
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Doctor Inbox - Shows consult request status */}
+        <div className="card-base flex-1 overflow-hidden flex flex-col min-h-0">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Doctor Inbox</h3>
+            <span className="text-[9px] font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded">
+              {myConsultRequests.length} request{myConsultRequests.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-2">
+            {myConsultRequests.length === 0 && (
+              <p className="text-xs text-slate-400 text-center py-4">No consult requests yet</p>
+            )}
+            {myConsultRequests.map(req => (
+              <div key={req.id} className={cn(
+                'p-2.5 rounded-xl border',
+                req.status === 'accepted' ? 'bg-green-50 border-green-200' :
+                req.status === 'rejected' ? 'bg-red-50 border-red-200' :
+                'bg-amber-50 border-amber-200'
+              )}>
+                <div className="flex justify-between items-start mb-1">
+                  <p className="text-[10px] font-black text-slate-800 truncate">{req.targetDoctorName}</p>
+                  <span className={cn(
+                    'text-[8px] font-black px-1.5 py-0.5 rounded uppercase shrink-0',
+                    req.status === 'accepted' ? 'bg-green-100 text-green-700' :
+                    req.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                    'bg-amber-100 text-amber-700'
+                  )}>
+                    {req.status}
+                  </span>
+                </div>
+                <p className="text-[9px] text-slate-500 line-clamp-2 mb-2">{req.problem}</p>
+                {req.status === 'accepted' && (
+                  <button
+                    onClick={() => setActiveChat(req.id)}
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-green-600 text-white rounded-lg text-[9px] font-black uppercase hover:bg-green-700"
+                  >
+                    <MessageSquare size={10} /> Start Chat
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -346,6 +595,29 @@ export default function PatientPage() {
           </div>
         </div>
       </aside>
+
+      {/* Chat Modal for Accepted Consult */}
+      <AnimatePresence>
+        {activeChat && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+            onClick={() => setActiveChat(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl w-full max-w-md h-[500px] overflow-hidden shadow-xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <ConsultChat consultId={activeChat} sender="patient" onClose={() => setActiveChat(null)} />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

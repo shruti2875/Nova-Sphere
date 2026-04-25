@@ -3,10 +3,11 @@ import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { motion } from 'motion/react';
-import { Stethoscope, Power, MapPin, UserRound, AlertCircle } from 'lucide-react';
+import { Stethoscope, Power, MapPin, UserRound, CheckCircle, XCircle, MessageSquare } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Severity } from '../types';
 import { cn } from '../lib/utils';
+import ConsultChat from '../components/ConsultChat';
 
 const SEV_COLOR: Record<Severity, string> = {
   low: 'bg-green-500', medium: 'bg-yellow-500', high: 'bg-orange-500', critical: 'bg-red-600',
@@ -18,7 +19,7 @@ function MapPicker({ onPick }: { onPick: (lat: number, lng: number) => void }) {
 }
 
 export default function DoctorPage() {
-  const { doctors, cases, registerDoctor, toggleDoctorAvailability } = useApp();
+  const { doctors, cases, registerDoctor, toggleDoctorAvailability, consultRequests, respondToConsult } = useApp();
   const [name, setName] = useState('');
   const [spec, setSpec] = useState('');
   const [phone, setPhone] = useState('');
@@ -27,6 +28,18 @@ export default function DoctorPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [selectedDoctorId, setSelectedDoctorId] = useState('');
+  const [responding, setResponding] = useState<string | null>(null);
+  const [activeChat, setActiveChat] = useState<string | null>(null);
+
+  const myRequests = consultRequests.filter(r => r.targetDoctorId === selectedDoctorId);
+  const pendingCount = myRequests.filter(r => r.status === 'pending').length;
+
+  const handleRespond = async (consultId: string, status: 'accepted' | 'rejected') => {
+    setResponding(consultId);
+    try { await respondToConsult(consultId, status); }
+    finally { setResponding(null); }
+  };
 
   const activeCases = cases.filter(c => c.status !== 'completed');
   const criticalCases = activeCases.filter(c => c.severity === 'critical');
@@ -103,6 +116,81 @@ export default function DoctorPage() {
             ))}
           </div>
         </div>
+
+        {/* Consult Inbox */}
+        <div className="card-base">
+          <div className="flex items-center gap-2 mb-3">
+            <MessageSquare size={12} className="text-indigo-600" />
+            <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Consult Inbox</h3>
+            {pendingCount > 0 && (
+              <span className="w-4 h-4 bg-red-600 text-white text-[8px] font-black rounded-full flex items-center justify-center animate-pulse ml-auto">
+                {pendingCount}
+              </span>
+            )}
+          </div>
+          <select
+            value={selectedDoctorId}
+            onChange={e => { setSelectedDoctorId(e.target.value); setActiveChat(null); }}
+            className="input-base w-full text-xs mb-3"
+          >
+            <option value="">— Select your profile —</option>
+            {doctors.map(d => (
+              <option key={d.id} value={d.id}>{d.name} · {d.specialization}</option>
+            ))}
+          </select>
+          {selectedDoctorId && (
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {myRequests.length === 0 && (
+                <p className="text-xs text-slate-400 text-center py-3">No requests yet</p>
+              )}
+              {myRequests.map(req => (
+                <div key={req.id} className={cn(
+                  'p-2.5 rounded-xl border',
+                  req.status === 'accepted' ? 'bg-green-50 border-green-200' :
+                  req.status === 'rejected' ? 'bg-red-50 border-red-200' :
+                  'bg-amber-50 border-amber-200'
+                )}>
+                  <div className="flex justify-between items-start mb-1">
+                    <p className="text-[10px] font-black text-slate-800 truncate">{req.patientName}</p>
+                    <span className={cn(
+                      'text-[8px] font-black px-1.5 py-0.5 rounded uppercase shrink-0',
+                      req.status === 'accepted' ? 'bg-green-100 text-green-700' :
+                      req.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                      'bg-amber-100 text-amber-700'
+                    )}>{req.status}</span>
+                  </div>
+                  <p className="text-[9px] text-slate-500 line-clamp-2 mb-2">{req.problem}</p>
+                  {req.status === 'pending' && (
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => handleRespond(req.id, 'accepted')}
+                        disabled={responding === req.id}
+                        className="flex-1 flex items-center justify-center gap-1 py-1 bg-green-600 text-white rounded text-[8px] font-black uppercase disabled:opacity-50"
+                      >
+                        <CheckCircle size={9} /> Accept
+                      </button>
+                      <button
+                        onClick={() => handleRespond(req.id, 'rejected')}
+                        disabled={responding === req.id}
+                        className="flex-1 flex items-center justify-center gap-1 py-1 bg-red-500 text-white rounded text-[8px] font-black uppercase disabled:opacity-50"
+                      >
+                        <XCircle size={9} /> Reject
+                      </button>
+                    </div>
+                  )}
+                  {req.status === 'accepted' && (
+                    <button
+                      onClick={() => setActiveChat(req.id)}
+                      className="w-full flex items-center justify-center gap-1 py-1 bg-indigo-600 text-white rounded text-[8px] font-black uppercase"
+                    >
+                      <MessageSquare size={9} /> Open Chat
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </aside>
 
       <main className="flex-1 flex flex-col gap-3 min-w-0">
@@ -152,6 +240,25 @@ export default function DoctorPage() {
           </div>
         </div>
       </main>
+
+      {/* Chat Modal */}
+      {activeChat && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setActiveChat(null)}
+        >
+          <motion.div
+            initial={{ scale: 0.9 }}
+            animate={{ scale: 1 }}
+            className="bg-white rounded-2xl w-full max-w-md h-[500px] overflow-hidden shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <ConsultChat consultId={activeChat} sender="doctor" onClose={() => setActiveChat(null)} />
+          </motion.div>
+        </motion.div>
+      )}
     </div>
   );
 }
