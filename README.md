@@ -1,22 +1,22 @@
 ## 🚑 Rapid Seva — AI Smart Emergency Response System
 
-- Overview
+### Overview
 
 - Rapid Seva is an AI-powered emergency response and ambulance coordination platform designed to minimize response time during critical medical situations. By integrating real-time traffic data, intelligent routing, and hospital coordination, Rapid Seva ensures faster and more efficient emergency care.
 In emergencies, every second counts — Rapid Seva helps save those seconds.
 
 ## 🚨 Problem Statement
-- Emergency medical systems often struggle with:
+### Emergency medical systems often struggle with:
 
 - 🚦 Traffic congestion delaying ambulances
 - 🔄 Poor coordination between hospitals and responders
 - 📡 Lack of real-time communication
-🚑 Inefficient ambulance allocation
+- 🚑 Inefficient ambulance allocation
 
 -These issues can lead to critical delays and reduced survival chances.
 
 ## 💡 Solution
-- Rapid Seva solves these challenges by:
+### Rapid Seva solves these challenges by:
 
 - 🚑 Automatically assigning the nearest available ambulance
 - 🗺️ Providing real-time optimized routes
@@ -74,10 +74,10 @@ Your Name - Sumedha Kulkarni
  - Nikita Thorat
 
 ## 📜 License
-- This project is licensed under the MIT License.
+### This project is licensed under the MIT License.
 
 ## Impact
-- Rapid Seva aims to:
+### Rapid Seva aims to:
 
 - ⏱️ Reduce emergency response time
 - 🏥 Improve patient survival rates
