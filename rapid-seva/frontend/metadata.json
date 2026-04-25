@@ -1,0 +1,8 @@
+{
+  "name": "Rapid Seva - Emergency System",
+  "description": "A real-time emergency response platform connecting patients, hospitals, doctors, and ambulances for rapid medical assistance.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": []
+}
