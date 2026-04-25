@@ -25,17 +25,25 @@ export default function DoctorPage() {
   const [pickedLat, setPickedLat] = useState<number | null>(null);
   const [pickedLng, setPickedLng] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
 
   const activeCases = cases.filter(c => c.status !== 'completed');
   const criticalCases = activeCases.filter(c => c.severity === 'critical');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !spec || pickedLat === null) return;
+    setError('');
+    if (!name.trim() || !spec.trim()) { setError('Name and specialization are required.'); return; }
+    if (pickedLat === null || pickedLng === null) { setError('Please click the map to set your location.'); return; }
     setLoading(true);
     try {
-      await registerDoctor({ name, specialization: spec, phone, lat: pickedLat, lng: pickedLng!, isAvailable: true });
+      await registerDoctor({ name: name.trim(), specialization: spec.trim(), phone: phone.trim(), lat: pickedLat, lng: pickedLng, isAvailable: true });
       setName(''); setSpec(''); setPhone(''); setPickedLat(null); setPickedLng(null);
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err) {
+      setError('Failed to join network. Check your connection.');
     } finally { setLoading(false); }
   };
 
@@ -53,15 +61,17 @@ export default function DoctorPage() {
             </div>
           </div>
           <form onSubmit={handleSubmit} className="space-y-3">
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Dr. Full Name" className="input-base w-full text-sm" required />
-            <input value={spec} onChange={e => setSpec(e.target.value)} placeholder="Specialization (e.g. Cardiologist)" className="input-base w-full text-sm" required />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Dr. Full Name" className="input-base w-full text-sm" />
+            <input value={spec} onChange={e => setSpec(e.target.value)} placeholder="Specialization (e.g. Cardiologist)" className="input-base w-full text-sm" />
             <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Phone (for alerts)" className="input-base w-full text-sm" />
             <div className={cn('p-2.5 rounded-xl border text-[10px] font-black uppercase flex items-center gap-2',
               pickedLat ? 'bg-blue-50 border-blue-100 text-blue-700' : 'bg-slate-50 border-slate-100 text-slate-400')}>
               <MapPin size={11} />
               {pickedLat ? `${pickedLat.toFixed(4)}, ${pickedLng?.toFixed(4)}` : 'Click map to set location'}
             </div>
-            <button type="submit" disabled={!pickedLat || loading} className="btn-primary w-full text-sm">
+            {error && <p className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 rounded-xl px-2.5 py-2">{error}</p>}
+            {success && <p className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-100 rounded-xl px-2.5 py-2">✓ Joined network successfully!</p>}
+            <button type="submit" disabled={loading} className="btn-primary w-full text-sm">
               {loading ? 'Joining...' : 'JOIN NETWORK'}
             </button>
           </form>

@@ -4,13 +4,14 @@ import {
   query, orderBy, getDoc
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { EmergencyCase, Hospital, Doctor, Role, Severity } from '../types';
+import { EmergencyCase, Hospital, Doctor, Role, Severity, ConsultRequest, ChatMessage } from '../types';
 import { api } from '../api';
 
 interface AppContextType {
   cases: EmergencyCase[];
   hospitals: Hospital[];
   doctors: Doctor[];
+  consultRequests: ConsultRequest[];
   currentRole: Role | null;
   backendOnline: boolean;
   firestoreReady: boolean;
@@ -21,6 +22,11 @@ interface AppContextType {
   registerHospital: (data: Omit<Hospital, 'id'>) => Promise<void>;
   registerDoctor: (data: Omit<Doctor, 'id'>) => Promise<void>;
   toggleDoctorAvailability: (doctorId: string, available: boolean) => Promise<void>;
+  // Teleconsultation
+  sendConsultRequest: (data: Omit<ConsultRequest, 'id'>) => Promise<string>;
+  respondToConsult: (consultId: string, status: 'accepted' | 'rejected') => Promise<void>;
+  sendChatMessage: (msg: Omit<ChatMessage, 'id'>) => Promise<void>;
+  getChatMessages: (consultId: string, cb: (msgs: ChatMessage[]) => void) => () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -40,6 +46,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [cases, setCases] = useState<EmergencyCase[]>([]);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [consultRequests, setConsultRequests] = useState<ConsultRequest[]>([]);
   const [currentRole, setCurrentRole] = useState<Role | null>(null);
   const [backendOnline, setBackendOnline] = useState(false);
   const [firestoreReady, setFirestoreReady] = useState(false);
@@ -92,7 +99,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (err) => console.warn('Firestore doctors error:', err.code)
     );
 
-    return () => { unsubCases(); unsubHospitals(); unsubDoctors(); };
+    const unsubConsults = onSnapshot(
+      query(collection(db, 'consultRequests'), orderBy('timestamp', 'desc')),
+      (snap) => setConsultRequests(snap.docs.map(d => ({ id: d.id, ...d.data() } as ConsultRequest))),
+      (err) => console.warn('Firestore consultRequests error:', err.code)
+    );
+
+    return () => { unsubCases(); unsubHospitals(); unsubDoctors(); unsubConsults(); };
   }, []);
 
   const setRole = (role: Role | null) => setCurrentRole(role);
@@ -142,11 +155,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await updateDoc(doc(db, 'doctors', doctorId), { isAvailable: available });
   };
 
+  // Teleconsultation methods
+  const sendConsultRequest = async (data: Omit<ConsultRequest, 'id'>): Promise<string> => {
+    const ref = await addDoc(collection(db, 'consultRequests'), data);
+    return ref.id;
+  };
+
+  const respondToConsult = async (consultId: string, status: 'accepted' | 'rejected') => {
+    await updateDoc(doc(db, 'consultRequests', consultId), { status });
+  };
+
+  const sendChatMessage = async (msg: Omit<ChatMessage, 'id'>) => {
+    await addDoc(collection(db, 'chatMessages'), msg);
+  };
+
+  const getChatMessages = (consultId: string, cb: (msgs: ChatMessage[]) => void) => {
+    return onSnapshot(
+      query(collection(db, 'chatMessages'), orderBy('timestamp', 'asc')),
+      (snap) => {
+        const msgs = snap.docs
+          .map(d => ({ id: d.id, ...d.data() } as ChatMessage))
+          .filter(m => m.consultId === consultId);
+        cb(msgs);
+      }
+    );
+  };
+
   return (
     <AppContext.Provider value={{
-      cases, hospitals, doctors, currentRole, backendOnline, firestoreReady, setRole,
+      cases, hospitals, doctors, consultRequests, currentRole, backendOnline, firestoreReady, setRole,
       submitCase, acceptCase, completeCase,
       registerHospital, registerDoctor, toggleDoctorAvailability,
+      sendConsultRequest, respondToConsult, sendChatMessage, getChatMessages,
     }}>
       {children}
     </AppContext.Provider>

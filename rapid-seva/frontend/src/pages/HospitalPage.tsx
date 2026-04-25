@@ -20,25 +20,47 @@ function MapPicker({ onPick }: { onPick: (lat: number, lng: number) => void }) {
   return null;
 }
 
+const HOSPITAL_SPECIALIZATIONS = [
+  'General Emergency',
+  'Cardiac & Trauma',
+  'Neurology & Stroke',
+  'Burns & Plastic Surgery',
+  'Pediatric Emergency',
+  'Orthopedic & Fractures',
+  'Maternity & Obstetrics',
+  'Multi-Specialty',
+];
+
 export default function HospitalPage() {
   const { hospitals, cases, registerHospital } = useApp();
   const [name, setName] = useState('');
+  const [address, setAddress] = useState('');
+  const [specialization, setSpecialization] = useState(HOSPITAL_SPECIALIZATIONS[0]);
   const [beds, setBeds] = useState(10);
   const [icu, setIcu] = useState(false);
   const [pickedLat, setPickedLat] = useState<number | null>(null);
   const [pickedLng, setPickedLng] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
 
   const activeCases = cases.filter(c => c.status !== 'completed');
   const criticalCases = activeCases.filter(c => c.severity === 'critical');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || pickedLat === null) return;
+    setError('');
+    if (!name.trim()) { setError('Hospital name is required.'); return; }
+    if (!address.trim()) { setError('Address is required.'); return; }
+    if (pickedLat === null) { setError('Please click the map to pin location.'); return; }
     setLoading(true);
     try {
-      await registerHospital({ name, lat: pickedLat, lng: pickedLng!, hasICU: icu, availableBeds: beds, totalBeds: beds + 20 });
-      setName(''); setPickedLat(null); setPickedLng(null);
+      await registerHospital({ name: name.trim(), address: address.trim(), specialization, lat: pickedLat, lng: pickedLng!, hasICU: icu, availableBeds: beds, totalBeds: beds + 20 });
+      setName(''); setAddress(''); setPickedLat(null); setPickedLng(null);
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch {
+      setError('Failed to register. Check your connection.');
     } finally { setLoading(false); }
   };
 
@@ -56,7 +78,15 @@ export default function HospitalPage() {
             </div>
           </div>
           <form onSubmit={handleSubmit} className="space-y-3">
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Hospital name" className="input-base w-full text-sm" required />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Hospital name" className="input-base w-full text-sm" />
+            <input value={address} onChange={e => setAddress(e.target.value)} placeholder="Full address (e.g. 12 MG Road, Pune)" className="input-base w-full text-sm" />
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase mb-1.5">Emergency Specialization</p>
+              <select value={specialization} onChange={e => setSpecialization(e.target.value)}
+                className="input-base w-full text-sm">
+                {HOSPITAL_SPECIALIZATIONS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <p className="text-[9px] font-black text-slate-400 uppercase mb-1.5">Available Beds</p>
@@ -80,7 +110,9 @@ export default function HospitalPage() {
               <MapPin size={11} />
               {pickedLat ? `${pickedLat.toFixed(4)}, ${pickedLng?.toFixed(4)}` : 'Click map to pin location'}
             </div>
-            <button type="submit" disabled={!pickedLat || !name || loading} className="btn-primary w-full text-sm">
+            {error && <p className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 rounded-xl px-2.5 py-2">{error}</p>}
+            {success && <p className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-100 rounded-xl px-2.5 py-2">✓ Hospital registered!</p>}
+            <button type="submit" disabled={loading} className="btn-primary w-full text-sm">
               {loading ? 'Registering...' : 'REGISTER UNIT'}
             </button>
           </form>
@@ -100,15 +132,19 @@ export default function HospitalPage() {
           </div>
           <div className="space-y-1.5">
             {hospitals.map(h => (
-              <div key={h.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-xl border border-slate-100">
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                  <p className="text-[10px] font-black text-slate-700 truncate max-w-[110px]">{h.name}</p>
+              <div key={h.id} className="p-2 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                    <p className="text-[10px] font-black text-slate-700 truncate">{h.name}</p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Bed size={10} className="text-slate-400" />
+                    <p className="text-[10px] font-black text-slate-400">{h.availableBeds}</p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Bed size={10} className="text-slate-400" />
-                  <p className="text-[10px] font-black text-slate-400">{h.availableBeds}</p>
-                </div>
+                {h.specialization && <p className="text-[9px] font-bold text-indigo-600 uppercase mt-0.5 ml-3.5">{h.specialization}</p>}
+                {h.address && <p className="text-[9px] text-slate-400 mt-0.5 ml-3.5 truncate">{h.address}</p>}
               </div>
             ))}
           </div>
